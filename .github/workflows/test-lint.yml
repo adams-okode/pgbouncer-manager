@@ -1,0 +1,63 @@
+name: Test & Lint
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest ruff
+          pip install -e .
+
+      - name: Lint with ruff
+        run: ruff check app cli
+
+      - name: Type check with mypy
+        run: mypy app cli
+
+      - name: Run tests
+        run: pytest --cov=app --cov=cli --cov-report=xml
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+          cache: 'npm'
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd ui
+          npm ci
+
+      - name: Run linter
+        run: |
+          cd ui
+          npm run lint
+
+      - name: Run build
+        run: |
+          cd ui
+          npm run build

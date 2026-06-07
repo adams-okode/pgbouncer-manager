@@ -1,0 +1,6 @@
+gopkg.in/ini.v1 v1.67.0 h1:B0f3n56Oc+1JpbiYg1gmiKJYRlF229+L62m0CjLlN8A=
+gopkg.in/ini.v1 v1.67.0/go.mod h1:zI942238xg4XzFkI4bqfBkWOBqOq1z4GZj4w0m4=
+github.com/gofiber/fiber/v2 v2.52.0 h1:8x8UdB1rIYJ9jiv1pJN2S/8809a+Q8u0J+Zf0sJ8lJ8=
+github.com/gofiber/fiber/v2 v2.52.0/go.mod h1:9JNIFp7Yj8pWqB1mz4G0oBt1q4q4q4q4q4q4q4q4q4q=
+github.com/spf13/cobra v1.8.1 h1:7aJaBxQcLGKIFB8cU8Y6pBx9R5o1qoJ4C7l2pO4O4C8=
+github.com/spf13/cobra v1.8.1/go.mod h1:Wq4XwrZ4tWuVU6rmO6kRt218t4o4q4q4q4q4q4q4q4q=
