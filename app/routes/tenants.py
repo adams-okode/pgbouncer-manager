@@ -2,7 +2,6 @@
 
 import os
 import re
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel

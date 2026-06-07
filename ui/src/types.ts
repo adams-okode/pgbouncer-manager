@@ -42,7 +42,6 @@ export interface PoolStat {
   send_time: number
   write_bytes: number
   read_bytes: number
-  state: string
   wait: number
   wait_us: number
 }

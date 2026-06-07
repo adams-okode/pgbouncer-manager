@@ -1,7 +1,6 @@
 """Pool monitoring API endpoints."""
 
 import subprocess
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 
@@ -95,7 +94,7 @@ def reload_pgbouncer():
     except FileNotFoundError:
         # Fall back to psql reload if docker not available
         try:
-            lines = run_psql("RELOAD;")
+            run_psql("RELOAD;")
             return {"status": "success", "message": "PgBouncer reloaded via psql"}
         except Exception as e:
             return {"status": "error", "message": str(e)}

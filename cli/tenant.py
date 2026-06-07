@@ -1,8 +1,6 @@
 """CLI commands for tenant management."""
 
 import argparse
-import os
-import re
 
 
 def parse_args():
