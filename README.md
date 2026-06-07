@@ -1,90 +1,87 @@
 # PgBouncer Manager
 
-Manage PgBouncer tenants, pool sizes, and credentials with a FastAPI backend, CLI, and web interface.
+Manage PgBouncer tenants, pool sizes, and credentials with a FastAPI backend, CLI, and React UI.
 
-## Features
+**Live Demo:** `https://predicta-online.github.io/pgbouncer-manager/`  
+**API Docs:** `http://localhost:3000/docs` (Swagger UI)
 
-- **FastAPI Backend** - RESTful API for tenant management
-- **CLI** - Scriptable admin operations
-- **React UI** - Visual tenant and pool monitoring
-- **PgBouncer Integration** - Auto-reload configs via SIGHUP
+## What It Does
+
+This tool manages multi-tenant PgBouncer deployments by:
+
+1. **Dynamic Tenant Management** - Add/remove tenants via API/CLI without restart
+2. **Pool Configuration** - Adjust pool sizes per tenant dynamically
+3. **Credential Rotation** - Securely rotate tenant database passwords
+4. **PgBouncer Reload** - Send SIGHUP to reload configs without downtime
+5. **Pool Monitoring** - Real-time pool statistics and connection metrics
 
 ## Architecture
 
 ```
 pgbouncer-manager/
-├── app/
-│   ├── main.py          # FastAPI app entry point
-│   └── routes/
-│       ├── tenants.py   # Tenant CRUD endpoints
-│       └── pools.py     # Pool monitoring endpoints
-├── cli/
-│   └── tenant.py        # CLI commands
-├── ui/                  # React SPA (Vite)
-│   ├── src/
-│   │   ├── components/  # React components
-│   │   ├── hooks/       # Custom hooks
-│   │   └── services/    # API services
-│   └── package.json
-├── requirements.txt
-└── .gitignore
+├── app/              # FastAPI backend
+│   ├── main.py       # App entry point
+│   └── routes/       # API endpoints
+├── cli/              # CLI tool (tenant.py)
+├── ui/               # React SPA (Vite)
+└── docs/             # MkDocs documentation
 ```
 
-## Installation
-
-### Prerequisites
-
-- Python 3.11+
-- Node.js 23+
-- Docker (for PgBouncer integration)
-- psql client
-
-### Setup
+## Quick Start
 
 ```bash
-# Backend
+# 1. Start backend
 cd /root/Projects/Predicta/pgbouncer-manager
-python -m venv venv
-source venv/bin/activate
+python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-
-# UI
-cd ui
-npm install
-```
-
-## Usage
-
-### Start Backend
-
-```bash
-# Set environment variables
 export CONFIG_DIR=/root/Projects/Predicta/predicta-infra/pgbouncer/config
+uvicorn app.main:app --reload --port 3000
 
-# Run server
-python -m uvicorn app.main:app --reload --port 3000
+# 2. Start UI (separate terminal)
+cd ui && npm install && npm run dev
+
+# 3. Add a tenant
+curl -X POST http://localhost:3000/tenants \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "tenant1",
+    "host": "db.example.com",
+    "password": "secret123",
+    "pool_size": 15
+  }'
+
+# 4. Check pools
+curl http://localhost:3000/pools/status
 ```
 
-### Start UI
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET /` | Health check |
+| `GET /tenants` | List all tenants |
+| `POST /tenants` | Add a new tenant |
+| `PATCH /tenants/{id}` | Update tenant (pool_size, password) |
+| `DELETE /tenants/{id}` | Remove tenant |
+| `GET /pools/status` | Pool statistics (active, waiting, idle) |
+| `GET /pools/stats` | Connection statistics |
+| `POST /pools/reload` | Reload PgBouncer via SIGHUP |
+
+## CLI Commands
 
 ```bash
-cd ui
-npm run dev
-```
-
-The UI runs on `http://localhost:5173` and proxies `/api` to the backend.
-
-### CLI
-
-```bash
-# Add a tenant
+# Add tenant
 python -m cli.tenant tenant-add \
-  --id=tenant1 \
-  --host=db.example.com \
-  --password=secret123
+  --id=tenant1 --host=db.example.com --password=secret123
 
 # List tenants
 python -m cli.tenant tenant-list
+
+# Update pool size
+python -m cli.tenant tenant-update --id=tenant1 --pool-size=20
+
+# Remove tenant
+python -m cli.tenant tenant-remove --id=tenant1
 
 # List pools
 python -m cli.tenant pools-list
@@ -93,36 +90,28 @@ python -m cli.tenant pools-list
 python -m cli.tenant reload
 ```
 
-## API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | / | Health check |
-| GET | /tenants | List all tenants |
-| POST | /tenants | Add a new tenant |
-| GET | /tenants/{id} | Get tenant details |
-| PATCH | /tenants/{id} | Update tenant |
-| DELETE | /tenants/{id} | Remove tenant |
-| GET | /pools/status | List pool statistics |
-| GET | /pools/stats | List connection statistics |
-| POST | /pools/reload | Reload PgBouncer |
-
-## Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CONFIG_DIR` | `/root/Projects/Predicta/predicta-infra/pgbouncer/config` | Path to PgBouncer config directory |
-| `PORT` | `3000` | API server port |
-
 ## Docker
 
 ```bash
-# Build
 docker build -t pgbouncer-manager .
-
-# Run
 docker run -p 3000:3000 \
   -e CONFIG_DIR=/app/config \
   -v /path/to/pgbouncer/config:/app/config:ro \
   pgbouncer-manager
 ```
+
+## Documentation
+
+See `docs/` for:
+- API reference
+- CLI usage
+- Deployment (Docker, Kubernetes, Bare Metal)
+- Security best practices
+- Contributing guidelines
+
+## CI/CD
+
+- **Docs**: Auto-deploy to GitHub Pages on `docs/**` changes
+- **Tests**: pytest + ruff + mypy + frontend linting
+- **Docker**: Build & push images to Docker Hub
+- **Releases**: Auto-generate GitHub releases on tags
