@@ -13,7 +13,7 @@ Manage PgBouncer tenants, pool sizes, and credentials with a FastAPI backend, CL
 
 ```bash
 # Backend
-export CONFIG_DIR=/root/Projects/Predicta/predicta-infra/pgbouncer/config
+export CONFIG_DIR=/path/to/pgbouncer/config
 python -m uvicorn app.main:app --reload --port 3000
 
 # UI

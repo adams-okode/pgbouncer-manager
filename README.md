@@ -2,7 +2,7 @@
 
 Manage PgBouncer tenants, pool sizes, and credentials with a FastAPI backend, CLI, and React UI.
 
-**Live Demo:** `https://predicta-online.github.io/pgbouncer-manager/`  
+**Live Demo:** `https://adams-okode.github.io/pgbouncer-manager/`  
 **API Docs:** `http://localhost:3000/docs` (Swagger UI)
 
 ## What It Does
@@ -31,10 +31,10 @@ pgbouncer-manager/
 
 ```bash
 # 1. Start backend
-cd /root/Projects/Predicta/pgbouncer-manager
+cd /path/to/pgbouncer-manager
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-export CONFIG_DIR=/root/Projects/Predicta/predicta-infra/pgbouncer/config
+export CONFIG_DIR=/path/to/pgbouncer/config
 uvicorn app.main:app --reload --port 3000
 
 # 2. Start UI (separate terminal)

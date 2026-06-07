@@ -16,7 +16,7 @@ docker run -p 3000:3000 \
 version: '3.8'
 services:
   pgbouncer-manager:
-    image: predicta/pgbouncer-manager:latest
+    image: adamsokode/pgbouncer-manager:latest
     container_name: pgbouncer-manager
     ports:
       - "3000:3000"

@@ -1,7 +1,7 @@
 site_name: PgBouncer Manager
-site_url: https://predicta-online.github.io/pgbouncer-manager/
-repo_url: https://github.com/Predicta-Online/pgbouncer-manager
-repo_name: Predicta-Online/pgbouncer-manager
+site_url: https://adams-okode.github.io/pgbouncer-manager/
+repo_url: https://github.com/adams-okode/pgbouncer-manager
+repo_name: adams-okode/pgbouncer-manager
 
 nav:
   - Home: index.md
@@ -58,6 +58,6 @@ markdown_extensions:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/Predicta-Online
+      link: https://github.com/adams-okode
     - icon: fontawesome/brands/docker
-      link: https://hub.docker.com/r/predicta
+      link: https://hub.docker.com/r/adamsokode

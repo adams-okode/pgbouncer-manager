@@ -30,7 +30,7 @@ def root():
 @app.on_event("startup")
 async def startup_event():
     """Startup logic."""
-    config_dir = os.environ.get("CONFIG_DIR", "/root/Projects/Predicta/predicta-infra/pgbouncer/config")
+    config_dir = os.environ.get("CONFIG_DIR", "/path/to/pgbouncer/config")
     os.environ["CONFIG_DIR"] = config_dir
 
 

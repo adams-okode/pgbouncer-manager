@@ -10,7 +10,7 @@
 ## Backend
 
 ```bash
-cd /root/Projects/Predicta/pgbouncer-manager
+cd /path/to/pgbouncer-manager
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -27,7 +27,7 @@ npm install
 
 ```bash
 # Backend
-export CONFIG_DIR=/root/Projects/Predicta/predicta-infra/pgbouncer/config
+export CONFIG_DIR=/path/to/pgbouncer/config
 uvicorn app.main:app --reload --port 3000
 
 # UI

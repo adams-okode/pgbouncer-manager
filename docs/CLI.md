@@ -3,7 +3,7 @@
 ## Installation
 
 ```bash
-cd /root/Projects/Predicta/pgbouncer-manager
+cd /path/to/pgbouncer-manager
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt

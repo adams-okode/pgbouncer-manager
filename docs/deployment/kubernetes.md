@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
       - name: pgbouncer-manager
-        image: predicta/pgbouncer-manager:latest
+        image: adamsokode/pgbouncer-manager:latest
         ports:
         - containerPort: 3000
         env:

@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/tenants", tags=["tenants"])
 
-CONFIG_DIR = os.environ.get("CONFIG_DIR", "/root/Projects/Predicta/predicta-infra/pgbouncer/config")
+CONFIG_DIR = os.environ.get("CONFIG_DIR", "/path/to/pgbouncer/config")
 
 
 class TenantCreate(BaseModel):

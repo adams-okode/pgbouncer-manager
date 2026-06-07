@@ -3,7 +3,7 @@
 ## 1. Start Backend
 
 ```bash
-export CONFIG_DIR=/root/Projects/Predicta/predicta-infra/pgbouncer/config
+export CONFIG_DIR=/path/to/pgbouncer/config
 uvicorn app.main:app --reload --port 3000
 ```
 

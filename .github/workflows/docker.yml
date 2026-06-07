@@ -33,7 +33,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: predicta/pgbouncer-manager
+          images: adamsokode/pgbouncer-manager
 
       - name: Build and push
         uses: docker/build-push-action@v6
