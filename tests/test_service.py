@@ -1,5 +1,8 @@
 """Tests for the PgBouncer service layer."""
 
+import os
+import stat
+
 import pytest
 
 from app.config import Settings
@@ -54,6 +57,23 @@ def test_atomic_write_leaves_no_tempfiles(tmp_path):
     svc.write_databases({"t1": {"host": "h"}})
     leftovers = [p.name for p in tmp_path.iterdir() if p.name.endswith(".tmp")]
     assert leftovers == []
+
+
+def test_new_config_files_are_readable(tmp_path):
+    # PgBouncer reads these as its own user, so new files must not be 0600.
+    svc = make_service(tmp_path)
+    svc.write_databases({"t1": {"host": "h"}})
+    mode = stat.S_IMODE(svc.settings.databases_path.stat().st_mode)
+    assert mode == 0o644
+
+
+def test_existing_file_mode_is_preserved(tmp_path):
+    svc = make_service(tmp_path)
+    svc.write_databases({"t1": {"host": "h"}})
+    os.chmod(svc.settings.databases_path, 0o640)
+    svc.write_databases({"t1": {"host": "h2"}})  # rewrite
+    mode = stat.S_IMODE(svc.settings.databases_path.stat().st_mode)
+    assert mode == 0o640  # operator-set perms survive rewrites
 
 
 def test_hash_credential_passthrough_when_already_hashed(tmp_path):

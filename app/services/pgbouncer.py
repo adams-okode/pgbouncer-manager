@@ -17,6 +17,7 @@ import contextlib
 import logging
 import os
 import re
+import stat
 import subprocess
 import tempfile
 from pathlib import Path
@@ -45,14 +46,26 @@ def validate_tenant_id(tenant_id: str) -> str:
 
 
 def _atomic_write(path: Path, content: str) -> None:
-    """Write ``content`` to ``path`` atomically (temp file + rename)."""
+    """Write ``content`` to ``path`` atomically (temp file + rename).
+
+    ``mkstemp`` creates the temp file 0600. PgBouncer reads these files as its
+    own (often non-root) user, so an unreadable 0600 file would break it after
+    the first rewrite. We therefore preserve the mode of an existing file (so
+    operators can lock perms down, e.g. 0640 with a shared group) and default
+    new files to 0644.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        mode = stat.S_IMODE(path.stat().st_mode)
+    except FileNotFoundError:
+        mode = 0o644
     fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(content)
             fh.flush()
             os.fsync(fh.fileno())
+        os.chmod(tmp_name, mode)
         os.replace(tmp_name, path)
     except BaseException:
         # Best-effort cleanup of the temp file on any failure.
