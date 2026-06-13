@@ -15,18 +15,16 @@ GET /tenants HTTP/1.1
 ```
 
 ```json
-{
-  "tenants": [
-    {
-      "id": "tenant1",
-      "host": "db.example.com",
-      "port": 5432,
-      "db_name": "postgres",
-      "user": "postgres",
-      "pool_size": 15
-    }
-  ]
-}
+[
+  {
+    "id": "tenant1",
+    "host": "db.example.com",
+    "port": 5432,
+    "db_name": "postgres",
+    "user": "postgres",
+    "pool_size": 15
+  }
+]
 ```
 
 ### Add Tenant

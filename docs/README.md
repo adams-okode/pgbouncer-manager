@@ -1,107 +1,96 @@
 # PgBouncer Manager
 
-Manage PgBouncer tenants, pool sizes, and credentials with a REST API, CLI, and web interface.
+Manage PgBouncer tenants, pool sizes, and credentials with a FastAPI backend, a
+CLI, and a React web interface.
 
 ## Features
 
-- **REST API** - Full CRUD for tenant management
-- **CLI** - Scriptable admin operations
-- **Web UI** - Visual tenant and pool monitoring
-- **Docker Integration** - Auto-reload PgBouncer configs via SIGHUP
-- **Encrypted Credentials** - AES-256-GCM encryption for database passwords
+- **REST API** (FastAPI) — full CRUD for tenant management
+- **CLI** — a thin HTTP client of the API for scripting
+- **Web UI** — React + Vite dashboard for tenants and pool monitoring
+- **Reload** — SIGHUP PgBouncer containers (or `RELOAD` via the admin console)
+- **Hashed credentials** — passwords are stored as PgBouncer-compatible
+  SCRAM-SHA-256 (default) or md5 hashes, never plaintext
 
 ## Architecture
 
 ```
 pgbouncer-manager/
-├── cmd/
-│   ├── server/      # Go API server (Fiber)
-│   └── cli/         # CLI tool (Cobra)
-├── internal/
-│   ├── api/         # HTTP routes and handlers
-│   ├── config/      # INI parser/writer
-│   ├── pgbouncer/   # PgBouncer operations (reload, queries)
-│   ├── models/      # Data structures
-│   └── storage/     # Encrypted credential storage
-├── ui/              # React SPA (Vite)
-└── docs/            # Documentation
+├── app/                 # FastAPI backend
+│   ├── main.py          # App entry point (lifespan, CORS, routers)
+│   ├── config.py        # pydantic-settings configuration
+│   ├── auth.py          # md5 / SCRAM-SHA-256 hash generation
+│   ├── deps.py          # FastAPI dependency providers
+│   ├── routes/          # tenants + pools HTTP endpoints
+│   └── services/        # PgBouncer service layer (file IO, psql, reload)
+├── cli/                 # CLI tool (cli/tenant.py)
+├── ui/                  # React SPA (Vite + Tailwind)
+└── docs/                # MkDocs documentation
 ```
 
-## Installation
+## Prerequisites
 
-### Prerequisites
+- Python 3.11+
+- Node.js 20+ (for the UI)
+- `psql` client (for pool/stats queries against the admin console)
+- Docker (optional, for SIGHUP-based reloads)
 
-- Go 1.23+
-- Node.js 23+
-- Docker (for PgBouncer integration)
-
-### Build and Run
+## Build and Run
 
 ```bash
-# Build the backend server
-cd cmd/server
-go build -o ../../bin/server .
+# Backend
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+export CONFIG_DIR=/path/to/pgbouncer/config
+uvicorn app.main:app --reload --port 3000
 
-# Build the React UI
-cd ../../ui
+# Frontend
+cd ui
 npm install
-npm run build
-
-# Run the server
-../../bin/server
+npm run dev      # dev server on :5173, proxies /api -> :3000
 ```
 
 ## Configuration
 
-```bash
-# Set environment variables
-export CONFIG_DIR=/path/to/pgbouncer/config
-export ENCRYPTION_KEY=your-32-byte-encryption-key
-export PORT=3000
-```
+All settings are environment variables (or a `.env` file). Common ones:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CONFIG_DIR` | `/etc/pgbouncer` | Directory holding `databases.ini` + `userlist.txt` |
+| `AUTH_SCHEME` | `scram-sha-256` | Credential hash scheme (`scram-sha-256`, `md5`, `plain`) |
+| `ADMIN_HOST` / `ADMIN_PORT` | `localhost` / `6432` | PgBouncer admin console |
+| `ADMIN_USER` / `ADMIN_DB` | `pgbouncer` / `pgbouncer` | Admin console auth/db |
+| `RELOAD_CONTAINERS` | `[]` | JSON list of Docker containers to SIGHUP on reload |
+| `CORS_ORIGINS` | `["*"]` | Allowed CORS origins |
 
 ## API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | /tenants | Add a new tenant |
-| GET | /tenants | List all tenants |
-| GET | /tenants/:id | Get tenant details |
-| PATCH | /tenants/:id | Update tenant |
-| DELETE | /tenants/:id | Remove tenant |
-| POST | /tenants/:id/rotate-credentials | Rotate tenant credentials |
-| PUT | /tenants/:id/credentials | Set tenant credentials manually |
-| GET | /pools | List pool statistics |
-| GET | /stats | List connection statistics |
-| POST | /reload | Reload PgBouncer configuration |
+| GET | `/` | Health check |
+| GET | `/tenants` | List all tenants |
+| POST | `/tenants` | Add a new tenant |
+| GET | `/tenants/{id}` | Get tenant details |
+| PATCH | `/tenants/{id}` | Partially update a tenant |
+| DELETE | `/tenants/{id}` | Remove a tenant |
+| GET | `/pools/status` | Pool statistics (SHOW POOLS) |
+| GET | `/pools/stats` | Connection statistics (SHOW STATS) |
+| POST | `/pools/reload` | Reload PgBouncer |
 
 ## CLI Commands
 
+The CLI talks to the running API (configure with `--api-url` or `PGBM_API_URL`).
+
 ```bash
-# Add a tenant
-pgbouncer-manager tenant add \
-  --id=mytenant \
-  --host=db.example.com \
-  --user=myuser \
-  --password=mysecret \
-  --pool-size=20
+python -m cli.tenant tenant-add \
+  --id=mytenant --host=db.example.com --user=myuser \
+  --password=mysecret --pool-size=20
 
-# List tenants
-pgbouncer-manager tenant list
-
-# Update tenant pool size
-pgbouncer-manager tenant update \
-  --id=mytenant \
-  --pool-size=25
-
-# Remove a tenant
-pgbouncer-manager tenant remove --id=mytenant
-
-# List pools
-pgbouncer-manager pools list
-
-# Reload PgBouncer
-pgbouncer-manager reload
+python -m cli.tenant tenant-list
+python -m cli.tenant tenant-update --id=mytenant --pool-size=25
+python -m cli.tenant tenant-remove --id=mytenant
+python -m cli.tenant pools-list
+python -m cli.tenant reload
 ```
 
 ## Deployment
@@ -109,7 +98,6 @@ pgbouncer-manager reload
 ### Docker Compose
 
 ```yaml
-version: '3.8'
 services:
   pgbouncer-manager:
     build: .
@@ -117,27 +105,18 @@ services:
       - "3000:3000"
     environment:
       - CONFIG_DIR=/app/config
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - AUTH_SCHEME=scram-sha-256
     volumes:
       - ./pgbouncer-config:/app/config
 ```
 
-### Kubernetes
-
-See `docs/DEPLOYMENT.md` for Kubernetes deployment instructions.
-
-## Security
-
-- Credentials are encrypted using AES-256-GCM
-- Encryption key must be exactly 32 bytes
-- Store key securely (environment variable, secrets manager)
-- PgBouncer uses TLS by default (`server_tls_sslmode = require`)
+See `docs/deployment/` for Kubernetes and bare-metal instructions.
 
 ## Contributing
 
 1. Create a feature branch
-2. Run tests: `go test ./...`
-3. Lint: `golangci-lint run`
+2. Run tests: `pytest`
+3. Lint and type-check: `ruff check .` and `mypy .`
 4. Submit a pull request
 
 ## License

@@ -1,42 +1,39 @@
 # Security Guide
 
-## Encrypted Credentials
+## Credential Storage
 
-### How Encryption Works
+PgBouncer authenticates clients against `userlist.txt`, which it reads directly.
+Credentials must therefore be stored in a PgBouncer-readable format — they
+cannot be encrypted at rest and still be usable. This project stores **hashed**
+credentials and never plaintext.
 
-Credentials (database passwords) should be encrypted using AES-256-GCM before storing.
+### Supported schemes (`AUTH_SCHEME`)
+
+| Scheme | Format | Notes |
+|--------|--------|-------|
+| `scram-sha-256` (default) | `SCRAM-SHA-256$<iterations>:<salt>$<StoredKey>:<ServerKey>` | Salted + iterated (PBKDF2-HMAC-SHA256). Recommended. |
+| `md5` | `md5` + `md5(password + username)` | Legacy, still widely supported. |
+| `plain` | the password verbatim | Local testing only. Never use in production. |
+
+### How SCRAM-SHA-256 hashing works
 
 ```
-Encryption: AES-256-GCM (authenticated encryption)
-Key: 32-byte random key (base64 encoded)
-Nonce: 12-byte random nonce per encryption
-Tag: 16-byte authentication tag
+SaltedPassword = PBKDF2-HMAC-SHA256(password, salt, iterations)
+ClientKey      = HMAC(SaltedPassword, "Client Key")
+StoredKey      = SHA256(ClientKey)
+ServerKey      = HMAC(SaltedPassword, "Server Key")
+verifier       = SCRAM-SHA-256$iterations:b64(salt)$b64(StoredKey):b64(ServerKey)
 ```
 
-### Generating an Encryption Key
+A fresh random 16-byte salt is generated for every credential. Iterations
+default to `4096` and are configurable via `SCRAM_ITERATIONS`.
 
-```bash
-# Generate a secure 32-byte key
-openssl rand -base64 32
-```
-
-### Environment Variable
-
-```bash
-export ENCRYPTION_KEY="your-32-byte-base64-key-here"
-```
-
-### Storing the Key Securely
-
-| Environment | Recommended Storage |
-|-------------|---------------------|
-| Docker Compose | Docker secrets |
-| Kubernetes | Kubernetes Secrets |
-| Bare Metal | Environment file with 0600 permissions |
+> **Correction:** previous versions of this guide described AES-256-GCM
+> encryption of credentials and a required `ENCRYPTION_KEY`. That feature was
+> never implemented and the claim was removed. The `cryptography` dependency
+> has also been dropped.
 
 ## TLS for PgBouncer Connections
-
-Your existing PgBouncer setup already has TLS enabled:
 
 ```ini
 server_tls_sslmode = require
@@ -44,81 +41,39 @@ server_tls_sslmode = require
 
 ## API Security
 
-### Authentication (Production)
+The API has no built-in authentication. For anything beyond local use:
 
-Add JWT authentication middleware using `python-jose`:
+### Reverse proxy + TLS
 
-```python
-# Add to app/main.py
-from jose import jwt, JWTError
+Terminate TLS at Nginx/Traefik and forward to the app over localhost.
 
-def verify_token(token: str):
-    # Verify JWT token
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        return payload
-    except JWTError:
-        return None
-```
+### Authentication and rate limiting
 
-### Rate Limiting
-
-```python
-# Add to app/main.py
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-
-limiter = Limiter(key_func=get_remote_address)
-app.state.limiter = limiter
-```
-
-### HTTPS Only
-
-Use a reverse proxy (Nginx, Traefik) to handle SSL termination.
+Add authentication (JWT, mTLS, or proxy-level auth) and rate limiting at the
+edge. These are deployment concerns and are intentionally not bundled.
 
 ### CORS Configuration
 
-```python
-# Add to app/main.py
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["https://yourdomain.com"],
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "DELETE"],
-    allow_headers=["Content-Type", "Authorization"],
-)
+Set `CORS_ORIGINS` to your UI origin instead of the permissive `*` default:
+
+```bash
+export CORS_ORIGINS='["https://yourdomain.com"]'
 ```
 
 ## File Permissions
 
 ```bash
-# Encryption key file
-chmod 600 .env.encryption
-chown pgbouncer:pgbouncer .env.encryption
-
-# Config directory
-chmod 700 /etc/pgbouncer/config
-chmod 640 /etc/pgbouncer/config/*
+chmod 700 "$CONFIG_DIR"
+chmod 640 "$CONFIG_DIR"/userlist.txt "$CONFIG_DIR"/databases.ini
 ```
 
 ## Audit Logging
 
-### Logging Configuration
-
-```python
-# Add to app/main.py
-import logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-```
-
-### Audit Events
+Operations emit structured log lines via the `pgbouncer_manager.audit` logger.
 
 | Event | Description |
 |-------|-------------|
 | `tenant.add` | New tenant added |
-| `tenant.update` | Tenant settings modified |
+| `tenant.update` | Tenant settings or credential modified |
 | `tenant.remove` | Tenant deleted |
-| `credentials.rotate` | Credentials rotated |
-| `credentials.update` | Credentials manually updated |
 | `config.reload` | PgBouncer configuration reloaded |

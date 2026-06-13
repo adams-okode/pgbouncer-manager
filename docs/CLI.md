@@ -21,15 +21,18 @@ python -m cli.tenant tenant-add \
   --host=<host> \
   --user=<user> \
   --password=<password> \
-  [--pool-size=<size>]
+  [--port=<port>] [--db-name=<name>] [--pool-size=<size>] [--pool-mode=<mode>]
 ```
 
 **Options:**
 - `--id` (required): Unique tenant identifier
 - `--host` (required): Database host
+- `--port`: Database port (default: `5432`)
+- `--db-name`: Database name (default: `postgres`)
 - `--user`: Database user (default: `postgres`)
 - `--password` (required): Database password
 - `--pool-size`: Pool size (default: `15`)
+- `--pool-mode`: Optional pool mode (`session`, `transaction`, `statement`)
 
 ### tenant-list
 
@@ -39,15 +42,24 @@ List all configured tenants.
 python -m cli.tenant tenant-list
 ```
 
+### tenant-get
+
+Show one tenant.
+
+```bash
+python -m cli.tenant tenant-get --id=<id>
+```
+
 ### tenant-update
 
-Update tenant settings.
+Partially update a tenant (only the flags you pass are changed).
 
 ```bash
 python -m cli.tenant tenant-update \
   --id=<id> \
-  [--pool-size=<size>] \
-  [--password=<password>]
+  [--host=<host>] [--port=<port>] [--db-name=<name>] \
+  [--user=<user>] [--password=<password>] \
+  [--pool-size=<size>] [--pool-mode=<mode>]
 ```
 
 ### tenant-remove
@@ -66,6 +78,14 @@ List all pool statistics.
 python -m cli.tenant pools-list
 ```
 
+### stats-list
+
+List connection statistics.
+
+```bash
+python -m cli.tenant stats-list
+```
+
 ### reload
 
 Reload PgBouncer configuration.
@@ -74,25 +94,20 @@ Reload PgBouncer configuration.
 python -m cli.tenant reload
 ```
 
-## Environment Variables
+## Configuration
 
-| Variable | Description |
-|----------|-------------|
-| `CONFIG_DIR` | Path to PgBouncer config directory |
-| `DOCKER_MODE` | Set to `false` for bare metal (default: `true`) |
-| `PGBOUNCER_HOST` | PgBouncer host for direct reload (default: `localhost`) |
-| `PGBOUNCER_PORT` | PgBouncer admin port (default: `6543`) |
+The CLI is a thin HTTP client of the running API. Point it at the API with
+either the `--api-url` flag or the `PGBM_API_URL` environment variable.
 
-## Shell Completion
-
-### Bash
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PGBM_API_URL` | Base URL of the PgBouncer Manager API | `http://localhost:3000` |
 
 ```bash
-python -m cli.tenant --completion bash > /etc/bash_completion.d/pgbouncer-manager
+# Example: target a remote API
+python -m cli.tenant --api-url=https://pgbm.example.com tenant-list
+# or
+export PGBM_API_URL=https://pgbm.example.com
+python -m cli.tenant tenant-list
 ```
 
-### Zsh
-
-```bash
-python -m cli.tenant --completion zsh > /usr/share/zsh/site-functions/_pgbouncer-manager
-```
