@@ -161,8 +161,10 @@ mypy app cli    # type check
 cd ui && npm run build   # type-check + build the SPA
 ```
 
-CI runs the same checks; docs deploy to GitHub Pages on `docs/**` changes,
-images publish to Docker Hub on `main`, and tags cut GitHub releases.
+CI runs the same checks on every push/PR. Releases are build-gated: pushing a
+`v*` tag cuts a GitHub release, and **publishing that release** is what builds
+and pushes the Docker image + PyPI package. Docs deploy to GitHub Pages on
+`docs/**` changes.
 
 ## License
 
