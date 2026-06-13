@@ -1,10 +1,44 @@
+import type {
+  DeleteResponse,
+  PoolsResponse,
+  ReloadResponse,
+  StatsResponse,
+  Tenant,
+  TenantForm,
+  TenantUpdate,
+} from '../types'
+
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    headers: { 'Content-Type': 'application/json', ...(options.headers ?? {}) },
+    ...options,
+  })
+
+  if (!res.ok) {
+    let detail: string = res.statusText
+    try {
+      const body = await res.json()
+      if (body?.detail) detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)
+    } catch {
+      // response had no JSON body
+    }
+    throw new Error(`${res.status} ${detail}`)
+  }
+
+  if (res.status === 204) return undefined as T
+  return (await res.json()) as T
+}
+
 export const api = {
-  listTenants: async () => fetch('/api/tenants').then(r => r.json()),
-  getTenant: (id: string) => fetch(`/api/tenants/${id}`).then(r => r.json()),
-  addTenant: (data: any) => fetch('/api/tenants', { method: 'POST', body: JSON.stringify(data) }).then(r => r.json()),
-  updateTenant: (id: string, data: any) => fetch(`/api/tenants/${id}`, { method: 'PATCH', body: JSON.stringify(data) }).then(r => r.json()),
-  deleteTenant: (id: string) => fetch(`/api/tenants/${id}`, { method: 'DELETE' }).then(r => r.json()),
-  listPools: async () => fetch('/api/pools/status').then(r => r.json()),
-  listStats: async () => fetch('/api/pools/stats').then(r => r.json()),
-  reload: async () => fetch('/api/pools/reload', { method: 'POST' }).then(r => r.json()),
+  listTenants: () => request<Tenant[]>('/tenants'),
+  getTenant: (id: string) => request<Tenant>(`/tenants/${id}`),
+  addTenant: (data: TenantForm) =>
+    request<Tenant>('/tenants', { method: 'POST', body: JSON.stringify(data) }),
+  updateTenant: (id: string, data: TenantUpdate) =>
+    request<Tenant>(`/tenants/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteTenant: (id: string) =>
+    request<DeleteResponse>(`/tenants/${id}`, { method: 'DELETE' }),
+  listPools: () => request<PoolsResponse>('/pools/status'),
+  listStats: () => request<StatsResponse>('/pools/stats'),
+  reload: () => request<ReloadResponse>('/pools/reload', { method: 'POST' }),
 }

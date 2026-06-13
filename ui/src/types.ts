@@ -1,3 +1,5 @@
+// Types mirror the FastAPI backend response shapes.
+
 export interface Tenant {
   id: string
   host: string
@@ -5,8 +7,10 @@ export interface Tenant {
   db_name: string
   user: string
   pool_size: number
+  pool_mode?: string | null
 }
 
+// Payload for creating a tenant (password required).
 export interface TenantForm {
   id: string
   host: string
@@ -15,8 +19,21 @@ export interface TenantForm {
   user: string
   password: string
   pool_size: number
+  pool_mode?: string
 }
 
+// Partial update payload: every field optional.
+export interface TenantUpdate {
+  host?: string
+  port?: number
+  db_name?: string
+  user?: string
+  password?: string
+  pool_size?: number
+  pool_mode?: string
+}
+
+// SHOW POOLS row as normalized by the backend.
 export interface PoolStatus {
   database: string
   user: string
@@ -27,39 +44,23 @@ export interface PoolStatus {
   max_wait: number
 }
 
-export interface PoolStat {
-  database: string
-  user: string
-  type: string
-  state: string
-  addr: string
-  port: number
-  local_addr: string
-  local_port: number
-  create_time: number
-  connect_time: number
-  receive_time: number
-  send_time: number
-  write_bytes: number
-  read_bytes: number
-  wait: number
-  wait_us: number
+export interface PoolsResponse {
+  pools: PoolStatus[]
 }
 
-export interface Stats {
-  database: string
-  user: string
-  type: string
-  state: string
-  addr: string
-  port: number
-  local_addr: string
-  local_port: number
-  create_time: number
-  connect_time: number
-  receive_time: number
-  send_time: number
-  write_bytes: number
-  read_bytes: number
-  wait: number
+// SHOW STATS rows are returned verbatim (column name -> value).
+export type StatRow = Record<string, string>
+
+export interface StatsResponse {
+  stats: StatRow[]
+}
+
+export interface ReloadResponse {
+  status: string
+  message: string
+}
+
+export interface DeleteResponse {
+  message: string
+  id: string
 }
