@@ -1,0 +1,83 @@
+# Example stack: a real PgBouncer in front of a real Postgres, managed live by
+# pgbouncer-manager. All three share one config directory (a named volume), which
+# is the whole point — the manager edits databases.ini/userlist.txt and PgBouncer
+# reads them.
+#
+#   client ──▶ pgbouncer:6432 ──▶ postgres:5432
+#                  ▲ reads /etc/pgbouncer/{databases.ini,userlist.txt}
+#                  │
+#   manager:3000 ──┘ writes those files + RELOADs over the admin console
+#
+# Run it:   ./test/run.sh      (brings the stack up and asserts end-to-end)
+# Or:       docker compose up --build
+
+services:
+  # Seeds the shared config volume. pgbouncer.ini is force-copied (the PgBouncer
+  # image ships its own default that Docker pre-populates into the volume), while
+  # databases.ini/userlist.txt use cp -n so the manager's later edits survive
+  # restarts. All made world-readable so the non-root PgBouncer can read them.
+  init:
+    image: busybox:1.36
+    command: >
+      sh -c "cp /seed/pgbouncer.ini /etc/pgbouncer/pgbouncer.ini &&
+             cp -n /seed/databases.ini /seed/userlist.txt /etc/pgbouncer/ &&
+             chmod 0644 /etc/pgbouncer/* &&
+             echo seeded: && ls -l /etc/pgbouncer"
+    volumes:
+      - ./seed:/seed:ro
+      - pgbconf:/etc/pgbouncer
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      # Local example only: trust auth so PgBouncer can connect without a
+      # backend password. Do NOT do this in production.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  pgbouncer:
+    build: ./pgbouncer
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    volumes:
+      - pgbconf:/etc/pgbouncer
+    ports:
+      - "6432:6432"   # exposed so you can connect through the pooler from the host
+
+  manager:
+    build:
+      context: ..          # repo root holds the Dockerfile
+      dockerfile: Dockerfile
+    depends_on:
+      pgbouncer:
+        condition: service_started
+    environment:
+      CONFIG_DIR: /etc/pgbouncer
+      AUTH_SCHEME: scram-sha-256
+      ADMIN_HOST: pgbouncer
+      ADMIN_PORT: "6432"
+      ADMIN_USER: pgbouncer
+      ADMIN_DB: pgbouncer
+      RELOAD_CONTAINERS: "[]"   # empty -> reload via admin-console RELOAD
+    volumes:
+      - pgbconf:/etc/pgbouncer   # read-write: the manager edits these files
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:3000/').status==200 else 1)\""]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  pgbconf:

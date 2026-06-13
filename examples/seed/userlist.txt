@@ -1,0 +1,2 @@
+; userlist.txt -- managed by pgbouncer-manager
+; (entries are added here as hashed verifiers when tenants are created)
