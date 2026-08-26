@@ -30,7 +30,7 @@ def _add(client, **overrides):
         "pool_size": 15,
     }
     payload.update(overrides)
-    return client.post("/tenants", json=payload)
+    return client.post("/api/tenants", json=payload)
 
 
 def test_add_tenant_hashes_credential(client):
@@ -53,7 +53,7 @@ def test_add_tenant_hashes_credential(client):
 def test_list_tenants(client):
     test_client, _ = client
     _add(test_client)
-    resp = test_client.get("/tenants")
+    resp = test_client.get("/api/tenants")
     assert resp.status_code == 200
     body = resp.json()
     assert len(body) == 1 and body[0]["id"] == "t1"
@@ -72,7 +72,7 @@ def test_invalid_tenant_id_rejected(client):
 
 def test_get_missing_tenant_404(client):
     test_client, _ = client
-    assert test_client.get("/tenants/nope").status_code == 404
+    assert test_client.get("/api/tenants/nope").status_code == 404
 
 
 def test_patch_pool_size_keeps_credential(client):
@@ -80,7 +80,7 @@ def test_patch_pool_size_keeps_credential(client):
     _add(test_client)
     before = svc.read_userlist()["svc"]
 
-    resp = test_client.patch("/tenants/t1", json={"pool_size": 42})
+    resp = test_client.patch("/api/tenants/t1", json={"pool_size": 42})
     assert resp.status_code == 200
     assert resp.json()["pool_size"] == 42
     assert svc.read_databases()["t1"]["pool_size"] == "42"
@@ -92,7 +92,7 @@ def test_patch_password_rehashes(client):
     _add(test_client)
     before = svc.read_userlist()["svc"]
 
-    resp = test_client.patch("/tenants/t1", json={"password": "newsecret"})
+    resp = test_client.patch("/api/tenants/t1", json={"password": "newsecret"})
     assert resp.status_code == 200
     after = svc.read_userlist()["svc"]
     assert after != before
@@ -102,7 +102,7 @@ def test_patch_password_rehashes(client):
 def test_delete_removes_tenant_and_user(client):
     test_client, svc = client
     _add(test_client)
-    resp = test_client.delete("/tenants/t1")
+    resp = test_client.delete("/api/tenants/t1")
     assert resp.status_code == 200
     assert svc.read_databases() == {}
     assert "svc" not in svc.read_userlist()
@@ -110,14 +110,14 @@ def test_delete_removes_tenant_and_user(client):
 
 def test_delete_missing_404(client):
     test_client, _ = client
-    assert test_client.delete("/tenants/nope").status_code == 404
+    assert test_client.delete("/api/tenants/nope").status_code == 404
 
 
 def test_delete_keeps_user_shared_by_another_tenant(client):
     test_client, svc = client
     _add(test_client, id="t1")
     _add(test_client, id="t2")  # same user "svc"
-    test_client.delete("/tenants/t1")
+    test_client.delete("/api/tenants/t1")
     # svc still referenced by t2, so its credential must remain.
     assert "svc" in svc.read_userlist()
     assert "t2" in svc.read_databases()
@@ -152,7 +152,7 @@ def test_pools_status_maps_columns():
     ]
     app.dependency_overrides[get_service] = lambda: FakeService(rows)
     with TestClient(app) as test_client:
-        resp = test_client.get("/pools/status")
+        resp = test_client.get("/api/pools/status")
     app.dependency_overrides.clear()
 
     assert resp.status_code == 200
@@ -171,7 +171,7 @@ def test_pools_status_maps_columns():
 def test_reload_endpoint():
     app.dependency_overrides[get_service] = lambda: FakeService([], "sent SIGHUP")
     with TestClient(app) as test_client:
-        resp = test_client.post("/pools/reload")
+        resp = test_client.post("/api/pools/reload")
     app.dependency_overrides.clear()
     assert resp.status_code == 200
     assert resp.json() == {"status": "success", "message": "sent SIGHUP"}

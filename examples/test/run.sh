@@ -29,16 +29,16 @@ $COMPOSE up -d --build
 
 step "Waiting for the manager API"
 for _ in $(seq 1 60); do
-  curl -sf http://localhost:3000/ >/dev/null 2>&1 && break || sleep 1
+  curl -sf http://localhost:3000/api/health >/dev/null 2>&1 && break || sleep 1
 done
-curl -sf http://localhost:3000/ >/dev/null 2>&1 || fail "manager API never became healthy"
+curl -sf http://localhost:3000/api/health >/dev/null 2>&1 || fail "manager API never became healthy"
 green "manager is up"
 
 step "Adding tenant 't1' via the manager API"
-curl -sf -X POST http://localhost:3000/tenants \
+curl -sf -X POST http://localhost:3000/api/tenants \
   -H 'Content-Type: application/json' \
   -d '{"id":"t1","host":"postgres","port":5432,"db_name":"tenantdb","user":"postgres","password":"tenantpass","pool_size":10}' \
-  || fail "POST /tenants failed"
+  || fail "POST /api/tenants failed"
 green "tenant added"
 
 step "Asserting the credential is hashed (not plaintext) in userlist.txt"
@@ -49,7 +49,7 @@ if echo "$userlist" | grep -q 'tenantpass'; then fail "plaintext password leaked
 green "credential stored as a SCRAM-SHA-256 verifier"
 
 step "Reloading PgBouncer through the manager (admin-console RELOAD)"
-curl -sf -X POST http://localhost:3000/pools/reload || fail "POST /pools/reload failed"
+curl -sf -X POST http://localhost:3000/api/pools/reload || fail "POST /api/pools/reload failed"
 green "reload issued"
 
 step "Connecting THROUGH PgBouncer to tenant 't1' and running a query"
@@ -66,6 +66,6 @@ done
 green "query routed through PgBouncer to the tenant database"
 
 step "Pool status reported by the manager"
-curl -sf http://localhost:3000/pools/status; echo
+curl -sf http://localhost:3000/api/pools/status; echo
 
 green "\nPASS — add → hash → reload → route → query all verified end-to-end."

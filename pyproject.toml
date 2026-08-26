@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pgbouncer-manager"
-version = "1.0.0"
+version = "2.0.0"
 description = "Manage PgBouncer tenants, pool sizes, and credentials with a FastAPI backend and CLI."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -37,6 +37,11 @@ pgbouncer-manager = "cli.tenant:main"
 
 [tool.setuptools]
 packages = ["app", "app.routes", "app.services", "cli"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+# The compiled SPA, produced by `npm run build` into app/static before packaging.
+app = ["static/**/*"]
 
 [tool.ruff]
 line-length = 100

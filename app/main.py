@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.routes import pools, tenants
@@ -49,10 +50,31 @@ app.include_router(tenants.router)
 app.include_router(pools.router)
 
 
-@app.get("/")
-def root() -> dict[str, str]:
+@app.get("/api/health")
+def health() -> dict[str, str]:
     """Health check endpoint."""
     return {"service": "pgbouncer-manager", "status": "ok"}
+
+
+def _mount_ui(application: FastAPI) -> None:
+    """Serve the compiled SPA at the root, if it was bundled into this build.
+
+    Must run after the API routers: those routes are matched first, and this
+    mount is the catch-all for everything else.
+    """
+    settings = get_settings()
+    if not settings.ui_is_available:
+        return
+    application.mount(
+        "/", StaticFiles(directory=settings.ui_dir, html=True), name="ui"
+    )
+    logger.warning(
+        "serving bundled web UI at / -- the API ships without authentication, "
+        "so put this behind an authenticating proxy before exposing the port"
+    )
+
+
+_mount_ui(app)
 
 
 if __name__ == "__main__":

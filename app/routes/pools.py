@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.deps import get_service
 from app.services.pgbouncer import PgBouncerError, PgBouncerService
 
-router = APIRouter(prefix="/pools", tags=["pools"])
+router = APIRouter(prefix="/api/pools", tags=["pools"])
 logger = logging.getLogger("pgbouncer_manager.audit")
 
 

@@ -53,6 +53,8 @@ Thumbs.db
 # UI
 node_modules/
 ui/dist/
+# Compiled SPA, copied here at image/wheel build time -- never committed.
+app/static/
 
 # Cache
 .cache/

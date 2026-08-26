@@ -52,6 +52,17 @@ class Settings(BaseSettings):
     # --- API / CORS ---------------------------------------------------------
     cors_origins: list[str] = ["*"]
 
+    # --- Bundled web UI -----------------------------------------------------
+    # The SPA is compiled into ``app/static`` at image/wheel build time. It is
+    # absent from a plain source checkout, which is why the mount is guarded on
+    # the directory existing rather than on this flag alone.
+    serve_ui: bool = True
+    ui_dir: Path = Path(__file__).resolve().parent / "static"
+
+    @property
+    def ui_is_available(self) -> bool:
+        return self.serve_ui and (self.ui_dir / "index.html").is_file()
+
     @property
     def databases_path(self) -> Path:
         return self.config_dir / self.databases_file

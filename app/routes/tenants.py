@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from app.deps import get_service
 from app.services.pgbouncer import PgBouncerService, validate_tenant_id
 
-router = APIRouter(prefix="/tenants", tags=["tenants"])
+router = APIRouter(prefix="/api/tenants", tags=["tenants"])
 logger = logging.getLogger("pgbouncer_manager.audit")
 
 _DEFAULT_POOL_SIZE = 15

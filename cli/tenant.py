@@ -22,7 +22,7 @@ class ApiError(RuntimeError):
 
 
 def _request(api_url: str, method: str, path: str, payload: dict | None = None) -> object:
-    url = f"{api_url.rstrip('/')}{path}"
+    url = f"{api_url.rstrip('/')}/api{path}"
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     req = urllib.request.Request(url, data=data, method=method)
     if data is not None:
