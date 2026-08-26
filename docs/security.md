@@ -36,6 +36,22 @@ The API ships without authentication. Before exposing it beyond localhost:
 - Add authentication (e.g. JWT or mTLS) and rate limiting at the proxy or app.
 - Restrict `CORS_ORIGINS` to your UI origin instead of the `*` default.
 
+## The bundled web UI
+
+When the UI is built into the image it is served at `/` (`SERVE_UI=true`, the
+default). That UI is a thin client over the same unauthenticated API, so
+publishing the port publishes tenant management — anyone who can reach it can
+add, edit, or delete tenants without a credential.
+
+- Keep the port on a private network, or front it with an authenticating proxy.
+  The proxy must cover `/` as well as `/api`; protecting only `/api` still
+  serves the UI to anonymous visitors.
+- Set `SERVE_UI=false` to run API-only where the UI has no business being
+  reachable — for example a cluster-internal deployment driven purely by the CLI.
+
+The service logs a warning at startup whenever it mounts the UI, as a reminder
+that the surface is unauthenticated.
+
 ## File Permissions
 
 ```bash

@@ -71,11 +71,11 @@ uvicorn app.main:app --reload --port 3000
 cd ui && npm install && npm run dev
 
 # Add a tenant (its password is hashed before it touches userlist.txt)
-curl -X POST http://localhost:3000/tenants \
+curl -X POST http://localhost:3000/api/tenants \
   -H "Content-Type: application/json" \
   -d '{"id":"tenant1","host":"db.example.com","user":"svc","password":"secret123","pool_size":15}'
 
-curl http://localhost:3000/pools/status
+curl http://localhost:3000/api/pools/status
 ```
 
 ## Configuration
@@ -90,20 +90,26 @@ touch:
 | `ADMIN_HOST` / `ADMIN_PORT` | `localhost` / `6432` | PgBouncer admin console for SHOW/RELOAD |
 | `RELOAD_CONTAINERS` | `[]` | JSON list of Docker containers to `SIGHUP`; empty ⇒ reload via admin console |
 | `CORS_ORIGINS` | `["*"]` | Allowed browser origins for the API |
+| `SERVE_UI` | `true` | Serve the bundled web UI at `/`. Set `false` to run API-only |
+| `CAPACITY_LIMITS` | `{}` | JSON map of `"host:port"` → `max_connections`, e.g. `{"db.example.com:5432": 200}` |
 
 ## API
 
+Everything lives under `/api`. If the UI was bundled into the build, it is served
+at `/` and every unmatched path falls through to it.
+
 | Method | Endpoint | Notes |
 |--------|----------|-------|
-| `GET` | `/` | Health check |
-| `GET` | `/tenants` | List tenants (array) |
-| `POST` | `/tenants` | Add tenant — `201`, or `409` if it exists, `422` on a bad id |
-| `GET` | `/tenants/{id}` | One tenant, or `404` |
-| `PATCH` | `/tenants/{id}` | Partial update; omit `password` to keep the existing one |
-| `DELETE` | `/tenants/{id}` | Removes the tenant; drops its user only if no other tenant uses it |
-| `GET` | `/pools/status` | `SHOW POOLS` (active / waiting / idle / max_wait) |
-| `GET` | `/pools/stats` | `SHOW STATS` (raw columns) |
-| `POST` | `/pools/reload` | `SIGHUP` containers or admin `RELOAD` |
+| `GET` | `/api/health` | Health check |
+| `GET` | `/api/tenants` | List tenants (array) |
+| `POST` | `/api/tenants` | Add tenant — `201`, or `409` if it exists, `422` on a bad id |
+| `GET` | `/api/tenants/{id}` | One tenant, or `404` |
+| `PATCH` | `/api/tenants/{id}` | Partial update; omit `password` to keep the existing one |
+| `DELETE` | `/api/tenants/{id}` | Removes the tenant; drops its user only if no other tenant uses it |
+| `GET` | `/api/pools/status` | `SHOW POOLS` (active / waiting / idle / max_wait) |
+| `GET` | `/api/pools/stats` | `SHOW STATS` (raw columns) |
+| `POST` | `/api/pools/reload` | `SIGHUP` containers or admin `RELOAD` |
+| `GET` | `/api/capacity` | Server connections committed per target Postgres |
 
 ## CLI
 

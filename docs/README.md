@@ -62,20 +62,26 @@ All settings are environment variables (or a `.env` file). Common ones:
 | `ADMIN_USER` / `ADMIN_DB` | `pgbouncer` / `pgbouncer` | Admin console auth/db |
 | `RELOAD_CONTAINERS` | `[]` | JSON list of Docker containers to SIGHUP on reload |
 | `CORS_ORIGINS` | `["*"]` | Allowed CORS origins |
+| `SERVE_UI` | `true` | Serve the bundled web UI at `/`; set `false` for API-only |
+| `CAPACITY_LIMITS` | `{}` | JSON map of `"host:port"` → `max_connections` |
 
 ## API Endpoints
 
+All endpoints are namespaced under `/api`. The bundled UI, when present, is
+served at `/`.
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/` | Health check |
-| GET | `/tenants` | List all tenants |
-| POST | `/tenants` | Add a new tenant |
-| GET | `/tenants/{id}` | Get tenant details |
-| PATCH | `/tenants/{id}` | Partially update a tenant |
-| DELETE | `/tenants/{id}` | Remove a tenant |
-| GET | `/pools/status` | Pool statistics (SHOW POOLS) |
-| GET | `/pools/stats` | Connection statistics (SHOW STATS) |
-| POST | `/pools/reload` | Reload PgBouncer |
+| GET | `/api/health` | Health check |
+| GET | `/api/tenants` | List all tenants |
+| POST | `/api/tenants` | Add a new tenant |
+| GET | `/api/tenants/{id}` | Get tenant details |
+| PATCH | `/api/tenants/{id}` | Partially update a tenant |
+| DELETE | `/api/tenants/{id}` | Remove a tenant |
+| GET | `/api/pools/status` | Pool statistics (SHOW POOLS) |
+| GET | `/api/pools/stats` | Connection statistics (SHOW STATS) |
+| POST | `/api/pools/reload` | Reload PgBouncer |
+| GET | `/api/capacity` | Connection budget per target Postgres |
 
 ## CLI Commands
 

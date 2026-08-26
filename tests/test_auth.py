@@ -18,7 +18,7 @@ def test_scram_hash_structure_and_determinism():
     assert first == second  # same salt -> same verifier
     assert first.startswith("SCRAM-SHA-256$4096:")
     # Format: SCRAM-SHA-256$<iter>:<salt>$<stored>:<server>
-    scheme_iter, rest = first.split(":", 1)
+    _scheme_iter, rest = first.split(":", 1)
     salt_part, keys = rest.split("$", 1)
     stored, server = keys.split(":")
     assert salt_part and stored and server
