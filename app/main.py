@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
-from app.routes import pools, tenants
+from app.routes import capacity, pools, tenants
 
 logger = logging.getLogger("pgbouncer_manager")
 
@@ -48,6 +48,7 @@ app.add_middleware(
 
 app.include_router(tenants.router)
 app.include_router(pools.router)
+app.include_router(capacity.router)
 
 
 @app.get("/api/health")

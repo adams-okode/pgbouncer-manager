@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { useDashboard } from '../hooks/useDashboard'
+import { CapacityPanel } from './CapacityPanel'
 
 export function Dashboard() {
   const { totalTenants, activeConnections, waiting, utilization, isLoading, error } =
@@ -28,6 +29,8 @@ export function Dashboard() {
         />
         <Card label="Waiting Connections" value={fmt(waiting)} icon={iconClock} />
       </div>
+
+      <CapacityPanel />
     </div>
   )
 }

@@ -52,6 +52,20 @@ class Settings(BaseSettings):
     # --- API / CORS ---------------------------------------------------------
     cors_origins: list[str] = ["*"]
 
+    # --- Capacity guardrails ------------------------------------------------
+    # Known server-connection ceilings per target, keyed "host:port", e.g.
+    # {"db.internal:5432": 200}. Targets absent from this map report a status
+    # of "unknown" rather than a guessed verdict.
+    capacity_limits: dict[str, int] = {}
+    # PgBouncer's own default_pool_size, applied to entries that omit
+    # pool_size. Deliberately not _DEFAULT_POOL_SIZE (15) from the tenants
+    # route: that is this tool's default for *new* tenants, whereas a
+    # hand-edited entry with no pool_size inherits PgBouncer's default of 20.
+    assumed_pool_size: int = 20
+    # Postgres reserves these for superusers, so they are not usable by pools.
+    superuser_reserved_connections: int = 3
+    capacity_tight_ratio: float = 0.8
+
     # --- Bundled web UI -----------------------------------------------------
     # The SPA is compiled into ``app/static`` at image/wheel build time. It is
     # absent from a plain source checkout, which is why the mount is guarded on

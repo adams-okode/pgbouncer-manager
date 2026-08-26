@@ -64,3 +64,25 @@ export interface DeleteResponse {
   message: string
   id: string
 }
+
+export type CapacityStatus = 'ok' | 'tight' | 'oversubscribed' | 'unknown'
+
+export interface TargetCapacity {
+  host: string
+  port: number
+  tenants: string[]
+  declared_total: number
+  reserve_total: number
+  worst_case_total: number
+  current_connections: number | null
+  max_connections: number | null
+  headroom: number | null
+  utilization: number | null
+  status: CapacityStatus
+  source: string
+  unbounded_pools: string[]
+}
+
+export interface CapacityResponse {
+  targets: TargetCapacity[]
+}

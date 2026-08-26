@@ -1,4 +1,5 @@
 import type {
+  CapacityResponse,
   DeleteResponse,
   PoolsResponse,
   ReloadResponse,
@@ -41,4 +42,5 @@ export const api = {
   listPools: () => request<PoolsResponse>('/pools/status'),
   listStats: () => request<StatsResponse>('/pools/stats'),
   reload: () => request<ReloadResponse>('/pools/reload', { method: 'POST' }),
+  getCapacity: () => request<CapacityResponse>('/capacity'),
 }

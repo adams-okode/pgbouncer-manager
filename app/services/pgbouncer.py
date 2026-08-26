@@ -20,6 +20,7 @@ import re
 import stat
 import subprocess
 import tempfile
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from app import auth
@@ -34,6 +35,61 @@ _ROW_COUNT_RE = re.compile(r"^\(\d+ rows?\)$")
 
 class PgBouncerError(RuntimeError):
     """Raised when a PgBouncer operation fails."""
+
+
+@dataclass(frozen=True)
+class TargetCapacity:
+    """Server-connection budget for one target Postgres (``host:port``).
+
+    Every ``databases.ini`` entry is its own PgBouncer pool -- a pool is keyed
+    on the entry name and the forced user, not on the target database -- so
+    ``pool_size`` values across entries add up rather than overlap.
+    """
+
+    host: str
+    port: int
+    tenants: list[str] = field(default_factory=list)
+    declared_total: int = 0
+    reserve_total: int = 0
+    worst_case_total: int = 0
+    current_connections: int | None = None
+    max_connections: int | None = None
+    headroom: int | None = None
+    utilization: float | None = None
+    status: str = "unknown"
+    source: str = "databases.ini"
+    # Entries with no forced user get one pool *per connecting user*, so their
+    # true ceiling is a multiple of pool_size that config alone cannot reveal.
+    unbounded_pools: list[str] = field(default_factory=list)
+
+
+@dataclass
+class _Bucket:
+    """Running totals for one target while capacity is being accumulated."""
+
+    tenants: list[str] = field(default_factory=list)
+    declared: int = 0
+    reserve: int = 0
+    current: int | None = None
+    unbounded: list[str] = field(default_factory=list)
+
+
+def _as_int(value: str | None) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def _field_int(row: dict[str, str], *names: str) -> int | None:
+    """First parseable integer among ``names``, tolerating column renames."""
+    for name in names:
+        parsed = _as_int(row.get(name))
+        if parsed is not None:
+            return parsed
+    return None
 
 
 def validate_tenant_id(tenant_id: str) -> str:
@@ -201,6 +257,92 @@ class PgBouncerService:
                 continue
             rows.append(dict(zip(header, values, strict=True)))
         return rows
+
+    # --- capacity -----------------------------------------------------------
+    def _show_databases(self) -> dict[str, dict[str, str]]:
+        """Effective per-database settings from the admin console, keyed by name.
+
+        Returns ``{}`` when PgBouncer is unreachable so capacity reporting can
+        fall back to the declared config instead of failing outright.
+        """
+        try:
+            rows = self.run_psql("SHOW DATABASES;")
+        except PgBouncerError as exc:
+            logger.info("capacity: admin console unavailable (%s); using databases.ini", exc)
+            return {}
+        return {row["name"]: row for row in rows if row.get("name")}
+
+    def capacity_by_target(self, *, effective: bool = True) -> list[TargetCapacity]:
+        """Summarise committed server connections per target ``host:port``."""
+        s = self.settings
+        databases = self.read_databases()
+        live = self._show_databases() if effective else {}
+
+        grouped: dict[tuple[str, int], _Bucket] = {}
+        for tenant_id, parts in sorted(databases.items()):
+            host = parts.get("host", "")
+            port = _as_int(parts.get("port")) or 5432
+            row = live.get(tenant_id, {})
+
+            pool_size = _field_int(row, "pool_size")
+            if pool_size is None:
+                pool_size = _as_int(parts.get("pool_size"))
+            if pool_size is None:
+                pool_size = s.assumed_pool_size
+            # Column name differs across PgBouncer versions.
+            reserve = _field_int(row, "reserve_pool", "reserve_pool_size") or 0
+            current = _field_int(row, "current_connections")
+
+            bucket = grouped.setdefault((host, port), _Bucket())
+            bucket.tenants.append(tenant_id)
+            bucket.declared += pool_size
+            bucket.reserve += reserve
+            if current is not None:
+                bucket.current = current if bucket.current is None else bucket.current + current
+            if not parts.get("user"):
+                bucket.unbounded.append(tenant_id)
+
+        return [
+            self._to_capacity(host, port, bucket, from_console=bool(live))
+            for (host, port), bucket in sorted(grouped.items())
+        ]
+
+    def _to_capacity(
+        self, host: str, port: int, bucket: _Bucket, *, from_console: bool
+    ) -> TargetCapacity:
+        s = self.settings
+        worst_case = bucket.declared + bucket.reserve
+        limit = s.capacity_limits.get(f"{host}:{port}")
+
+        headroom: int | None = None
+        utilization: float | None = None
+        status = "unknown"
+        if limit is not None:
+            usable = max(limit - s.superuser_reserved_connections, 0)
+            headroom = usable - worst_case
+            utilization = round(worst_case / usable, 4) if usable else None
+            if headroom < 0:
+                status = "oversubscribed"
+            elif utilization is not None and utilization >= s.capacity_tight_ratio:
+                status = "tight"
+            else:
+                status = "ok"
+
+        return TargetCapacity(
+            host=host,
+            port=port,
+            tenants=list(bucket.tenants),
+            declared_total=bucket.declared,
+            reserve_total=bucket.reserve,
+            worst_case_total=worst_case,
+            current_connections=bucket.current,
+            max_connections=limit,
+            headroom=headroom,
+            utilization=utilization,
+            status=status,
+            source="pgbouncer" if from_console else "databases.ini",
+            unbounded_pools=list(bucket.unbounded),
+        )
 
     # --- reload -------------------------------------------------------------
     def reload(self) -> str:
