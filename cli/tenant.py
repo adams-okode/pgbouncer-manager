@@ -28,7 +28,7 @@ def _request(api_url: str, method: str, path: str, payload: dict | None = None) 
     if data is not None:
         req.add_header("Content-Type", "application/json")
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310 (trusted URL)
+        with urllib.request.urlopen(req, timeout=15) as resp:  # URL is operator-supplied
             body = resp.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", "replace")

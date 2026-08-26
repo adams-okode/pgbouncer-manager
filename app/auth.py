@@ -79,4 +79,4 @@ def is_already_hashed(value: str) -> bool:
 
     Used to avoid double-hashing a value that a caller supplied pre-hashed.
     """
-    return value.startswith("md5") or value.startswith("SCRAM-SHA-256$")
+    return value.startswith(("md5", "SCRAM-SHA-256$"))
