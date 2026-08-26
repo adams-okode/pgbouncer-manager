@@ -1,4 +1,4 @@
-# API Documentation
+# API Reference
 
 ## Base URL
 
@@ -8,140 +8,76 @@ http://localhost:3000
 
 ## Tenants
 
-### List All Tenants
+### GET /tenants
 
-```http
-GET /tenants HTTP/1.1
+List all tenants.
+
+```bash
+curl http://localhost:3000/tenants
 ```
 
-```json
-[
-  {
+### POST /tenants
+
+Add a new tenant.
+
+```bash
+curl -X POST http://localhost:3000/tenants \
+  -H "Content-Type: application/json" \
+  -d '{
     "id": "tenant1",
     "host": "db.example.com",
-    "port": 5432,
-    "db_name": "postgres",
-    "user": "postgres",
-    "pool_size": 15
-  }
-]
+    "password": "secret123"
+  }'
 ```
 
-### Add Tenant
+### GET /tenants/{id}
 
-```http
-POST /tenants HTTP/1.1
-Content-Type: application/json
+Get tenant details.
 
-{
-  "id": "tenant1",
-  "host": "db.example.com",
-  "port": 5432,
-  "db_name": "postgres",
-  "user": "postgres",
-  "password": "secret123",
-  "pool_size": 15
-}
+```bash
+curl http://localhost:3000/tenants/tenant1
 ```
 
-### Get Tenant
+### PATCH /tenants/{id}
 
-```http
-GET /tenants/tenant1 HTTP/1.1
+Update tenant settings.
+
+```bash
+curl -X PATCH http://localhost:3000/tenants/tenant1 \
+  -H "Content-Type: application/json" \
+  -d '{"pool_size": 20}'
 ```
 
-```json
-{
-  "id": "tenant1",
-  "host": "db.example.com",
-  "port": 5432,
-  "db_name": "postgres",
-  "user": "postgres",
-  "pool_size": 15
-}
-```
+### DELETE /tenants/{id}
 
-### Update Tenant
+Remove a tenant.
 
-```http
-PATCH /tenants/tenant1 HTTP/1.1
-Content-Type: application/json
-
-{
-  "pool_size": 20,
-  "password": "newsecret"
-}
-```
-
-### Delete Tenant
-
-```http
-DELETE /tenants/tenant1 HTTP/1.1
-```
-
-```json
-{
-  "message": "Tenant deleted"
-}
+```bash
+curl -X DELETE http://localhost:3000/tenants/tenant1
 ```
 
 ## Pools
 
-### List Pool Status
+### GET /pools/status
 
-```http
-GET /pools/status HTTP/1.1
+List pool statistics.
+
+```bash
+curl http://localhost:3000/pools/status
 ```
 
-```json
-{
-  "pools": [
-    {
-      "database": "tenant1",
-      "user": "postgres",
-      "pool_mode": "transaction",
-      "active": 10,
-      "waiting": 0,
-      "idle": 5,
-      "max_wait": 0
-    }
-  ]
-}
+### GET /pools/stats
+
+List connection statistics.
+
+```bash
+curl http://localhost:3000/pools/stats
 ```
 
-### List Connection Statistics
+### POST /pools/reload
 
-```http
-GET /pools/stats HTTP/1.1
-```
+Reload PgBouncer configuration.
 
-```json
-{
-  "stats": [
-    {
-      "database": "tenant1",
-      "user": "postgres",
-      "type": "client",
-      "state": "active",
-      "addr": "10.0.0.1",
-      "port": 5432,
-      "local_addr": "10.0.0.2",
-      "local_port": 6432,
-      "create_time": 1234567890
-    }
-  ]
-}
-```
-
-### Reload PgBouncer
-
-```http
-POST /pools/reload HTTP/1.1
-```
-
-```json
-{
-  "status": "success",
-  "message": "PgBouncer reloaded"
-}
+```bash
+curl -X POST http://localhost:3000/pools/reload
 ```

@@ -1,39 +1,28 @@
-# Security Guide
+# Security
 
 ## Credential Storage
 
-PgBouncer authenticates clients against `userlist.txt`, which it reads directly.
-Credentials must therefore be stored in a PgBouncer-readable format — they
-cannot be encrypted at rest and still be usable. This project stores **hashed**
-credentials and never plaintext.
+PgBouncer reads credentials from `userlist.txt` itself, so passwords cannot be
+encrypted at rest in a way PgBouncer could still use — they must be stored in a
+format PgBouncer understands. This project therefore stores **hashed**
+credentials, never plaintext:
 
-### Supported schemes (`AUTH_SCHEME`)
+- **SCRAM-SHA-256** (default) — salted, iterated (PBKDF2) verifier, the same
+  format PostgreSQL 10+ uses. Configure with `AUTH_SCHEME=scram-sha-256`.
+- **md5** — legacy `md5(password + username)` digest. `AUTH_SCHEME=md5`.
+- **plain** — stores the password verbatim. Only for local testing; never use
+  in production. `AUTH_SCHEME=plain`.
 
-| Scheme | Format | Notes |
-|--------|--------|-------|
-| `scram-sha-256` (default) | `SCRAM-SHA-256$<iterations>:<salt>$<StoredKey>:<ServerKey>` | Salted + iterated (PBKDF2-HMAC-SHA256). Recommended. |
-| `md5` | `md5` + `md5(password + username)` | Legacy, still widely supported. |
-| `plain` | the password verbatim | Local testing only. Never use in production. |
+The plaintext password is only ever received over the API/CLI to compute the
+hash; it is never written to disk.
 
-### How SCRAM-SHA-256 hashing works
+> Note: this project does **not** implement AES-256-GCM encryption. Earlier
+> drafts of these docs claimed it did — that was inaccurate and has been
+> corrected.
 
-```
-SaltedPassword = PBKDF2-HMAC-SHA256(password, salt, iterations)
-ClientKey      = HMAC(SaltedPassword, "Client Key")
-StoredKey      = SHA256(ClientKey)
-ServerKey      = HMAC(SaltedPassword, "Server Key")
-verifier       = SCRAM-SHA-256$iterations:b64(salt)$b64(StoredKey):b64(ServerKey)
-```
+## TLS for PgBouncer
 
-A fresh random 16-byte salt is generated for every credential. Iterations
-default to `4096` and are configurable via `SCRAM_ITERATIONS`.
-
-> **Correction:** previous versions of this guide described AES-256-GCM
-> encryption of credentials and a required `ENCRYPTION_KEY`. That feature was
-> never implemented and the claim was removed. The `cryptography` dependency
-> has also been dropped.
-
-## TLS for PgBouncer Connections
+Configure your PgBouncer to require TLS to upstream databases:
 
 ```ini
 server_tls_sslmode = require
@@ -41,24 +30,11 @@ server_tls_sslmode = require
 
 ## API Security
 
-The API has no built-in authentication. For anything beyond local use:
+The API ships without authentication. Before exposing it beyond localhost:
 
-### Reverse proxy + TLS
-
-Terminate TLS at Nginx/Traefik and forward to the app over localhost.
-
-### Authentication and rate limiting
-
-Add authentication (JWT, mTLS, or proxy-level auth) and rate limiting at the
-edge. These are deployment concerns and are intentionally not bundled.
-
-### CORS Configuration
-
-Set `CORS_ORIGINS` to your UI origin instead of the permissive `*` default:
-
-```bash
-export CORS_ORIGINS='["https://yourdomain.com"]'
-```
+- Put it behind a reverse proxy (Nginx/Traefik) that terminates TLS.
+- Add authentication (e.g. JWT or mTLS) and rate limiting at the proxy or app.
+- Restrict `CORS_ORIGINS` to your UI origin instead of the `*` default.
 
 ## File Permissions
 
@@ -69,7 +45,8 @@ chmod 640 "$CONFIG_DIR"/userlist.txt "$CONFIG_DIR"/databases.ini
 
 ## Audit Logging
 
-Operations emit structured log lines via the `pgbouncer_manager.audit` logger.
+Tenant and reload operations emit structured audit log lines under the
+`pgbouncer_manager.audit` logger:
 
 | Event | Description |
 |-------|-------------|

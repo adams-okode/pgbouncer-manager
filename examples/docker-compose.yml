@@ -10,7 +10,7 @@
 #
 # Run it:   ./test/run.sh      (brings the stack up and asserts end-to-end)
 # Or:       docker compose up --build
-
+name: pg-bouncer-manager
 services:
   # Seeds the shared config volume. pgbouncer.ini is force-copied (the PgBouncer
   # image ships its own default that Docker pre-populates into the volume), while
