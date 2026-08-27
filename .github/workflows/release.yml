@@ -1,32 +1,48 @@
 name: Release
 
-# Cut a release by pushing a version tag:
-#   git tag v1.2.0 && git push origin v1.2.0
-# This creates a GitHub Release, which is what triggers Build & Publish
-# (build.yml) to produce and push artifacts.
+# Releases are cut by release-please, not by hand-pushed tags.
 #
-# NOTE: a release created with the default GITHUB_TOKEN does NOT trigger other
-# workflows (GitHub guards against recursive runs). To auto-trigger build.yml,
-# set a RELEASE_PAT secret (a PAT with `contents: write`). Without it, the
-# release is still created — just publish it from the GitHub UI / `gh release
-# create`, or run build.yml manually, to kick off the build.
+# Every push to main updates (or opens) a "chore(main): release X.Y.Z" PR that
+# collects the conventional commits since the last release. Merging that PR is
+# the act of releasing: release-please then bumps pyproject.toml +
+# ui/package.json, writes CHANGELOG.md, tags vX.Y.Z and publishes the GitHub
+# Release.
+#
+# The publish job runs in THIS SAME workflow run rather than reacting to the
+# release event, because tags and releases created with the default
+# GITHUB_TOKEN deliberately do not trigger other workflows. Chaining
+# release -> build via events would need a PAT; calling build.yml directly does
+# not.
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  release:
+  release-please:
     runs-on: ubuntu-latest
+    outputs:
+      released: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: actions/checkout@v4
+      - id: release
+        uses: googleapis/release-please-action@v4
         with:
-          fetch-depth: 0
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          token: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+  publish:
+    needs: release-please
+    if: needs.release-please.outputs.released == 'true'
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ needs.release-please.outputs.tag }}
+    secrets: inherit

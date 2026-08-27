@@ -48,8 +48,8 @@ npm run dev  # port 5173
 |----------|---------|---------|
 | `docs.yml` | Push to `docs/**` | Deploy to GitHub Pages |
 | `test-lint.yml` | Push/PR | Python + Frontend CI |
-| `release.yml` | Tag push (`v*`) | Create the GitHub release (gates the build) |
-| `build.yml` | Release published | Build & push Docker image + PyPI package |
+| `release.yml` | Push to `main` | release-please: version PR, then tag + GitHub release + publish |
+| `build.yml` | Called by `release.yml` (or manual) | Build & push the multi-arch Docker image |
 
 ## Docker
 

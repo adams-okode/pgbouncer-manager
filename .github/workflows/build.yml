@@ -1,21 +1,35 @@
 name: Build & Publish
 
-# Artifact builds run ONLY after a GitHub Release is published. Cutting a release
-# (push a v* tag -> release.yml) is the single trigger for producing and
-# publishing artifacts. workflow_dispatch is provided for manual re-runs.
+# Builds and pushes the multi-arch image to Docker Hub, tagged with the full
+# semver, the major.minor series, and `latest`.
+#
+# This workflow does not react to release events. It is called by release.yml in
+# the same run that cuts the release (see the note there about GITHUB_TOKEN not
+# triggering downstream workflows). workflow_dispatch is for manual re-runs of a
+# tag that already exists.
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Version tag to build, e.g. v2.1.0'
+        required: true
+        type: string
   workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Version tag to build, e.g. v2.1.0'
+        required: true
+        type: string
 
 jobs:
   docker:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -34,10 +48,11 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: adamsokode/pgbouncer-manager
-          # On a release the ref is the v* tag, so semver tags resolve cleanly.
+          # `value` is passed explicitly because the checked-out ref of a called
+          # workflow is still the caller's branch, so semver cannot be inferred.
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}},value=${{ inputs.ref }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.ref }}
             type=raw,value=latest
 
       - name: Build and push
@@ -50,43 +65,3 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
-
-  pypi:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '23'
-          cache: 'npm'
-          cache-dependency-path: ui/package-lock.json
-
-      # The wheel serves the SPA from app/static. Without this the published
-      # package would be UI-less while the Docker image ships one.
-      - name: Build UI into the package
-        run: |
-          cd ui
-          npm ci
-          npm run build
-          mkdir -p ../app/static
-          cp -r dist/* ../app/static/
-
-      - name: Build package
-        run: |
-          python -m pip install --upgrade pip build
-          python -m build
-
-      - name: Verify the UI was bundled into the wheel
-        run: python -c "import zipfile,glob,sys; w=glob.glob('dist/*.whl')[0]; n=zipfile.ZipFile(w).namelist(); sys.exit(0 if 'app/static/index.html' in n else 'index.html missing from wheel')"
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          password: ${{ secrets.PYPI_API_TOKEN }}

@@ -167,10 +167,41 @@ mypy app cli    # type check
 cd ui && npm run build   # type-check + build the SPA
 ```
 
-CI runs the same checks on every push/PR. Releases are build-gated: pushing a
-`v*` tag cuts a GitHub release, and **publishing that release** is what builds
-and pushes the Docker image + PyPI package. Docs deploy to GitHub Pages on
+CI runs the same checks on every push/PR. Docs deploy to GitHub Pages on
 `docs/**` changes.
+
+## Releasing
+
+Versioning is automatic and driven by [Conventional Commits][cc]. Nothing is
+tagged by hand.
+
+| Commit prefix | Bump |
+|---------------|------|
+| `fix:` | patch — `2.1.0` → `2.1.1` |
+| `feat:` | minor — `2.1.0` → `2.2.0` |
+| `feat!:` / `BREAKING CHANGE:` footer | major — `2.1.0` → `3.0.0` |
+| `docs:`, `chore:`, `test:`, `refactor:` | none on their own |
+
+On every push to `main`, release-please opens or updates a
+`chore(main): release X.Y.Z` pull request containing the version bumps
+(`pyproject.toml`, `ui/package.json`) and the generated `CHANGELOG.md`.
+**Merging that PR is the release**: it tags `vX.Y.Z`, publishes the GitHub
+Release, and — in the same workflow run — builds and pushes the multi-arch
+image to Docker Hub as `adamsokode/pgbouncer-manager:X.Y.Z`, `:X.Y`, and
+`:latest`.
+
+Publishing needs two repository secrets: `DOCKERHUB_USERNAME` and
+`DOCKERHUB_TOKEN`. To rebuild an existing tag, run **Build & Publish** manually
+and pass the tag (e.g. `v2.1.0`).
+
+To pin a specific version regardless of what the commits imply, add a footer to
+any commit that will land in the release:
+
+```
+Release-As: 2.1.0
+```
+
+[cc]: https://www.conventionalcommits.org/en/v1.0.0/
 
 ## License
 
