@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.1.1](https://github.com/adams-okode/pgbouncer-manager/compare/v2.1.0...v2.1.1) (2026-08-27)
+
+
+### Documentation
+
+* add CLAUDE.md with contribution and release conventions ([b34ba47](https://github.com/adams-okode/pgbouncer-manager/commit/b34ba47d08f5c7748810259478fef08871fbf5d4))
+* record that DOCKERHUB_TOKEN needs delete scope ([c621b5e](https://github.com/adams-okode/pgbouncer-manager/commit/c621b5e52d80e8af7a64be83272334206e4dc0f9))
+* require branch + pull request for all changes ([140de52](https://github.com/adams-okode/pgbouncer-manager/commit/140de523bfe7504314185584d9d3b2525054b4de))
+* require branch + pull request for all changes ([21d979d](https://github.com/adams-okode/pgbouncer-manager/commit/21d979d466bf3c68761c7420fb27359d8295d7e5))
+
 ## [2.1.0](https://github.com/adams-okode/pgbouncer-manager/compare/v2.0.0...v2.1.0) (2026-08-27)
 
 

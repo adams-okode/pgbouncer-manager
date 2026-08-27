@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pgbouncer-manager"
-version = "2.1.0"
+version = "2.1.1"
 description = "Manage PgBouncer tenants, pool sizes, and credentials with a FastAPI backend and CLI."
 readme = "README.md"
 requires-python = ">=3.11"
