@@ -3,6 +3,19 @@
 Read this before changing anything. It covers the conventions that are not
 recoverable by reading the code.
 
+## Never push to `main`
+
+All work goes on a branch and through a pull request. Branch **before** the
+first commit, open the PR, and stop — the repository owner merges it.
+
+This is not ceremony. `main` is what release-please cuts releases from, and
+tags are published off that history. Once a release exists, moving commits that
+are already on `main` means a force-push that orphans the released tag's
+ancestry, so "I'll tidy it into a PR afterwards" is not available as a fallback.
+
+The single exception is release-please's own `chore(main): release X.Y.Z` PR,
+which has to land on `main` to cut the release. The owner merges that too.
+
 ## Commit messages are load-bearing
 
 Versioning is fully automated by release-please. **The commit message decides
