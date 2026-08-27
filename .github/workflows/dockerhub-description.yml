@@ -1,0 +1,40 @@
+name: Docker Hub description
+
+# Docker Hub's repository overview is not derived from the image, so it has to
+# be pushed over the API separately.
+#
+# Deliberately NOT part of the release pipeline: the overview is documentation,
+# it should be fixable without cutting a release, and a failure here must not
+# turn a successful image publish red.
+#
+# The source is .github/DOCKERHUB.md rather than README.md — the README is
+# written for contributors, whereas Docker Hub visitors are deploying the image.
+# It lives outside docs/ on purpose, so it is not published as an orphan page on
+# the MkDocs site and does not trigger a docs redeploy when edited.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/DOCKERHUB.md'
+      - '.github/workflows/dockerhub-description.yml'
+  workflow_dispatch:
+
+jobs:
+  description:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Push overview to Docker Hub
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          # Needs a password or a PAT with read/write/delete scope; a
+          # read/write-only token is rejected by this endpoint.
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: adamsokode/pgbouncer-manager
+          readme-filepath: ./.github/DOCKERHUB.md
+          short-description: 'Manage PgBouncer tenants, pool sizes and credentials via REST API, CLI and web UI'
+          enable-url-completion: true
