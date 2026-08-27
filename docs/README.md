@@ -21,10 +21,10 @@ pgbouncer-manager/
 │   ├── config.py        # pydantic-settings configuration
 │   ├── auth.py          # md5 / SCRAM-SHA-256 hash generation
 │   ├── deps.py          # FastAPI dependency providers
-│   ├── routes/          # tenants + pools HTTP endpoints
+│   ├── routes/          # tenants, pools, capacity HTTP endpoints
 │   └── services/        # PgBouncer service layer (file IO, psql, reload)
 ├── cli/                 # CLI tool (cli/tenant.py)
-├── ui/                  # React SPA (Vite + Tailwind)
+├── ui/                  # React SPA (Vite + Radix Themes)
 └── docs/                # MkDocs documentation
 ```
 

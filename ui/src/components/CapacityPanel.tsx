@@ -1,11 +1,35 @@
+import { ExclamationTriangleIcon, InfoCircledIcon } from '@radix-ui/react-icons'
+import {
+  Badge,
+  Callout,
+  Card,
+  Code,
+  Flex,
+  Grid,
+  Heading,
+  Progress,
+  Separator,
+  Skeleton,
+  Text,
+} from '@radix-ui/themes'
+
 import { useCapacity } from '../hooks/useCapacity'
 import type { CapacityStatus, TargetCapacity } from '../types'
 
-const STATUS_STYLES: Record<CapacityStatus, string> = {
-  ok: 'bg-green-100 text-green-800',
-  tight: 'bg-yellow-100 text-yellow-800',
-  oversubscribed: 'bg-red-100 text-red-800',
-  unknown: 'bg-gray-100 text-gray-600',
+type BadgeColor = 'green' | 'amber' | 'red' | 'gray'
+
+const STATUS_COLOR: Record<CapacityStatus, BadgeColor> = {
+  ok: 'green',
+  tight: 'amber',
+  oversubscribed: 'red',
+  unknown: 'gray',
+}
+
+const STATUS_LABEL: Record<CapacityStatus, string> = {
+  ok: 'OK',
+  tight: 'Tight',
+  oversubscribed: 'Oversubscribed',
+  unknown: 'Unknown',
 }
 
 export function CapacityPanel() {
@@ -13,78 +37,163 @@ export function CapacityPanel() {
   const targets = data?.targets ?? []
 
   return (
-    <div className="space-y-3">
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900">Connection Capacity</h3>
-        <p className="text-sm text-gray-500">
-          Server connections committed to each target Postgres.
-        </p>
-      </div>
+    <Flex direction="column" gap="3">
+      <Flex direction="column" gap="1">
+        <Heading size="4">Connection Capacity</Heading>
+        <Text size="2" color="gray">
+          Server connections committed to each target Postgres. Pool sizes add up across
+          tenants pointing at the same server.
+        </Text>
+      </Flex>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
-          Failed to load capacity: {error.message}
-        </div>
+        <Callout.Root color="red" role="alert">
+          <Callout.Icon>
+            <ExclamationTriangleIcon />
+          </Callout.Icon>
+          <Callout.Text>Failed to load capacity: {error.message}</Callout.Text>
+        </Callout.Root>
       )}
 
-      {isLoading && <p className="text-sm text-gray-500">Loading…</p>}
+      {isLoading && (
+        <Card size="2">
+          <Skeleton>
+            <Text size="2">Loading capacity for every configured target…</Text>
+          </Skeleton>
+        </Card>
+      )}
 
       {!isLoading && !error && targets.length === 0 && (
-        <p className="text-sm text-gray-500">No tenants configured yet.</p>
+        <Card size="2">
+          <Text size="2" color="gray">
+            No tenants configured yet.
+          </Text>
+        </Card>
       )}
 
-      <div className="space-y-3">
+      <Flex direction="column" gap="3">
         {targets.map((target) => (
           <TargetRow key={`${target.host}:${target.port}`} target={target} />
         ))}
-      </div>
-    </div>
+      </Flex>
+    </Flex>
   )
 }
 
 function TargetRow({ target }: { target: TargetCapacity }) {
   const tenantCount = target.tenants.length
+  const pct = target.utilization === null ? null : Math.round(target.utilization * 100)
+
   return (
-    <div className="bg-white shadow rounded-lg p-4 space-y-2">
-      <div className="flex items-center justify-between gap-3">
-        <span className="font-medium text-gray-900">
-          {target.host}:{target.port}
-        </span>
-        <span
-          className={`px-2 py-0.5 text-xs font-semibold rounded-full ${STATUS_STYLES[target.status]}`}
-        >
-          {target.status}
-        </span>
-      </div>
+    <Card size="2">
+      <Flex direction="column" gap="3">
+        <Flex align="center" justify="between" gap="3" wrap="wrap">
+          <Code size="3" variant="ghost" weight="medium">
+            {target.host}:{target.port}
+          </Code>
+          <Flex align="center" gap="2">
+            <Badge color="gray" variant="soft" title="Where the pool sizes were read from">
+              via {target.source}
+            </Badge>
+            <Badge color={STATUS_COLOR[target.status]} variant="soft">
+              {STATUS_LABEL[target.status]}
+            </Badge>
+          </Flex>
+        </Flex>
 
-      <div className="text-sm text-gray-600">
-        <span className="font-semibold text-gray-900">{target.worst_case_total}</span> connections
-        committed across {tenantCount} {tenantCount === 1 ? 'pool' : 'pools'}
-        {target.max_connections !== null && <> of {target.max_connections} max</>}
-        {target.headroom !== null && (
-          <>
-            {' · '}
-            <span className={target.headroom < 0 ? 'text-red-700 font-semibold' : ''}>
-              {target.headroom < 0
-                ? `${Math.abs(target.headroom)} over capacity`
-                : `${target.headroom} spare`}
-            </span>
-          </>
+        {pct !== null && (
+          <Flex direction="column" gap="1">
+            <Progress
+              value={Math.min(pct, 100)}
+              color={STATUS_COLOR[target.status] === 'gray' ? undefined : STATUS_COLOR[target.status]}
+              size="2"
+            />
+            <Text size="1" color="gray">
+              {pct}% of usable connections committed
+            </Text>
+          </Flex>
         )}
-      </div>
 
-      {target.status === 'unknown' && (
-        <p className="text-xs text-gray-500">
-          Set CAPACITY_LIMITS for {target.host}:{target.port} to enable a verdict.
-        </p>
-      )}
+        <Separator size="4" />
 
-      {target.unbounded_pools.length > 0 && (
-        <p className="text-xs text-yellow-700">
-          No forced user on {target.unbounded_pools.join(', ')} — PgBouncer opens a pool per
-          connecting user, so the real total can exceed this.
-        </p>
+        <Grid columns={{ initial: '2', sm: '4' }} gap="3">
+          <Metric
+            label="Committed"
+            value={String(target.worst_case_total)}
+            hint={
+              target.reserve_total > 0
+                ? `${target.declared_total} pool + ${target.reserve_total} reserve`
+                : `across ${tenantCount} ${tenantCount === 1 ? 'pool' : 'pools'}`
+            }
+          />
+          <Metric
+            label="Server max"
+            value={target.max_connections === null ? '—' : String(target.max_connections)}
+            hint={target.max_connections === null ? 'Not configured' : 'From CAPACITY_LIMITS'}
+          />
+          <Metric
+            label={target.headroom !== null && target.headroom < 0 ? 'Over by' : 'Spare'}
+            value={target.headroom === null ? '—' : String(Math.abs(target.headroom))}
+            hint={target.headroom === null ? 'Needs a limit' : 'After superuser reserve'}
+            color={
+              target.headroom === null ? undefined : target.headroom < 0 ? 'red' : undefined
+            }
+          />
+          <Metric label="Tenants" value={String(tenantCount)} hint={target.tenants.join(', ')} />
+        </Grid>
+
+        {target.status === 'unknown' && (
+          <Callout.Root color="gray" variant="surface" size="1">
+            <Callout.Icon>
+              <InfoCircledIcon />
+            </Callout.Icon>
+            <Callout.Text>
+              Set <Code>CAPACITY_LIMITS</Code> for{' '}
+              <Code>
+                {target.host}:{target.port}
+              </Code>{' '}
+              to get a verdict instead of raw totals.
+            </Callout.Text>
+          </Callout.Root>
+        )}
+
+        {target.unbounded_pools.length > 0 && (
+          <Callout.Root color="amber" variant="surface" size="1">
+            <Callout.Icon>
+              <ExclamationTriangleIcon />
+            </Callout.Icon>
+            <Callout.Text>
+              No forced user on {target.unbounded_pools.join(', ')} — PgBouncer opens a pool per
+              connecting user, so the real total can exceed what is shown here.
+            </Callout.Text>
+          </Callout.Root>
+        )}
+      </Flex>
+    </Card>
+  )
+}
+
+interface MetricProps {
+  label: string
+  value: string
+  hint?: string
+  color?: 'red'
+}
+
+function Metric({ label, value, hint, color }: MetricProps) {
+  return (
+    <Flex direction="column" gap="1" minWidth="0">
+      <Text size="1" color="gray">
+        {label}
+      </Text>
+      <Text size="5" weight="bold" color={color} highContrast={!color}>
+        {value}
+      </Text>
+      {hint && (
+        <Text size="1" color="gray" truncate title={hint}>
+          {hint}
+        </Text>
       )}
-    </div>
+    </Flex>
   )
 }

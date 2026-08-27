@@ -1,61 +1,59 @@
-import { useState } from 'react'
-import { TenantTable } from './components/TenantTable'
-import { PoolMonitor } from './components/PoolMonitor'
+import { Box, Container, Flex, Heading, Tabs, Text } from '@radix-ui/themes'
+
 import { Dashboard } from './components/Dashboard'
+import { PoolMonitor } from './components/PoolMonitor'
+import { TenantTable } from './components/TenantTable'
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'tenants' | 'pools'>('dashboard')
-
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <h1 className="text-xl font-bold text-gray-900">PgBouncer Manager</h1>
-            </div>
-            <div className="flex space-x-4">
-              <button
-                onClick={() => setActiveTab('dashboard')}
-                className={`px-3 py-2 rounded-md text-sm font-medium ${
-                  activeTab === 'dashboard'
-                    ? 'bg-gray-100 text-gray-900'
-                    : 'text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                Dashboard
-              </button>
-              <button
-                onClick={() => setActiveTab('tenants')}
-                className={`px-3 py-2 rounded-md text-sm font-medium ${
-                  activeTab === 'tenants'
-                    ? 'bg-gray-100 text-gray-900'
-                    : 'text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                Tenants
-              </button>
-              <button
-                onClick={() => setActiveTab('pools')}
-                className={`px-3 py-2 rounded-md text-sm font-medium ${
-                  activeTab === 'pools'
-                    ? 'bg-gray-100 text-gray-900'
-                    : 'text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                Pools
-              </button>
-            </div>
-          </div>
-        </div>
-      </nav>
+    <Flex direction="column" minHeight="100vh">
+      <Box
+        asChild
+        style={{
+          borderBottom: '1px solid var(--gray-a5)',
+          backgroundColor: 'var(--color-panel-solid)',
+        }}
+      >
+        <header>
+          <Container size="4" px="5" py="4">
+            <Heading size="5" weight="bold">
+              PgBouncer Manager
+            </Heading>
+            <Text size="2" color="gray">
+              Tenant routing, pool health, and connection budget
+            </Text>
+          </Container>
+        </header>
+      </Box>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {activeTab === 'dashboard' && <Dashboard />}
-        {activeTab === 'tenants' && <TenantTable />}
-        {activeTab === 'pools' && <PoolMonitor />}
-      </main>
-    </div>
+      {/* Radix unmounts the inactive panels, so each tab's queries stay idle
+          until it is opened. */}
+      <Tabs.Root defaultValue="dashboard">
+        <Box style={{ borderBottom: '1px solid var(--gray-a5)' }}>
+          <Container size="4" px="5">
+            <Tabs.List size="2" style={{ boxShadow: 'none' }}>
+              <Tabs.Trigger value="dashboard">Dashboard</Tabs.Trigger>
+              <Tabs.Trigger value="tenants">Tenants</Tabs.Trigger>
+              <Tabs.Trigger value="pools">Pools</Tabs.Trigger>
+            </Tabs.List>
+          </Container>
+        </Box>
+
+        <Container size="4" px="5" py="6" asChild>
+          <main>
+            <Tabs.Content value="dashboard">
+              <Dashboard />
+            </Tabs.Content>
+            <Tabs.Content value="tenants">
+              <TenantTable />
+            </Tabs.Content>
+            <Tabs.Content value="pools">
+              <PoolMonitor />
+            </Tabs.Content>
+          </main>
+        </Container>
+      </Tabs.Root>
+    </Flex>
   )
 }
 

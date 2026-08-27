@@ -9,6 +9,10 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
+    // Radix's published .d.ts files reference Node globals like setImmediate,
+    // which this DOM-only lib set does not declare. Checking our own sources
+    // is what matters here; dependency typings are the vendor's problem.
+    "skipLibCheck": true,
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,

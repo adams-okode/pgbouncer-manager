@@ -1,4 +1,18 @@
 import { useState } from 'react'
+import { ExclamationTriangleIcon, PlusIcon } from '@radix-ui/react-icons'
+import {
+  AlertDialog,
+  Badge,
+  Button,
+  Callout,
+  Code,
+  Dialog,
+  Flex,
+  Heading,
+  Table,
+  Text,
+  TextField,
+} from '@radix-ui/themes'
 
 import {
   useAddTenant,
@@ -19,8 +33,10 @@ export function TenantTable() {
   const updateTenant = useUpdateTenant()
   const deleteTenant = useDeleteTenant()
   const [modal, setModal] = useState<ModalState>({ mode: 'closed' })
+  const [pendingDelete, setPendingDelete] = useState<Tenant | null>(null)
 
   const closeModal = () => setModal({ mode: 'closed' })
+  const editing = modal.mode === 'edit' ? modal.tenant : null
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -45,184 +61,268 @@ export function TenantTable() {
     }
   }
 
-  const handleDelete = (id: string) => {
-    if (window.confirm(`Delete tenant "${id}"? This removes its database and credential.`)) {
-      deleteTenant.mutate(id)
-    }
+  const confirmDelete = () => {
+    if (!pendingDelete) return
+    deleteTenant.mutate(pendingDelete.id, { onSuccess: () => setPendingDelete(null) })
   }
 
-  const mutationError = addTenant.error || updateTenant.error || deleteTenant.error
+  // Add/update failures surface inside the dialog, which covers the page while
+  // they happen; only delete failures need a page-level callout.
+  const formError = modal.mode === 'add' ? addTenant.error : updateTenant.error
+  const saving = addTenant.isPending || updateTenant.isPending
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">Tenants</h2>
-        <button
-          onClick={() => setModal({ mode: 'add' })}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-        >
-          Add Tenant
-        </button>
-      </div>
+    <Flex direction="column" gap="5">
+      <Flex align="center" justify="between" gap="3" wrap="wrap">
+        <Flex direction="column" gap="1">
+          <Heading size="6">Tenants</Heading>
+          <Text size="2" color="gray">
+            Each row is one <Code>databases.ini</Code> entry and its own PgBouncer pool.
+          </Text>
+        </Flex>
+        <Button onClick={() => setModal({ mode: 'add' })}>
+          <PlusIcon /> Add Tenant
+        </Button>
+      </Flex>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
-          Failed to load tenants: {error.message}
-        </div>
+        <Callout.Root color="red" role="alert">
+          <Callout.Icon>
+            <ExclamationTriangleIcon />
+          </Callout.Icon>
+          <Callout.Text>Failed to load tenants: {error.message}</Callout.Text>
+        </Callout.Root>
       )}
-      {mutationError && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
-          {mutationError.message}
-        </div>
+      {deleteTenant.error && (
+        <Callout.Root color="red" role="alert">
+          <Callout.Icon>
+            <ExclamationTriangleIcon />
+          </Callout.Icon>
+          <Callout.Text>{deleteTenant.error.message}</Callout.Text>
+        </Callout.Root>
       )}
 
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              {['ID', 'Host', 'Port', 'DB Name', 'User', 'Pool Size'].map((h) => (
-                <th
-                  key={h}
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  {h}
-                </th>
-              ))}
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {isLoading ? (
-              <tr>
-                <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
+      <Table.Root variant="surface">
+        <Table.Header>
+          <Table.Row>
+            <Table.ColumnHeaderCell>ID</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell>Host</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell align="right">Port</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell>Database</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell>User</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell align="right">Pool Size</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell align="right">Actions</Table.ColumnHeaderCell>
+          </Table.Row>
+        </Table.Header>
+
+        <Table.Body>
+          {isLoading ? (
+            <Table.Row>
+              <Table.Cell colSpan={7}>
+                <Text size="2" color="gray">
                   Loading…
-                </td>
-              </tr>
-            ) : tenants.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
-                  No tenants yet. Click “Add Tenant” to create one.
-                </td>
-              </tr>
-            ) : (
-              tenants.map((t) => (
-                <tr key={t.id}>
-                  <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">{t.id}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-gray-700">{t.host}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-gray-700">{t.port}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-gray-700">{t.db_name}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-gray-700">{t.user}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-gray-700">{t.pool_size}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right space-x-3">
-                    <button
+                </Text>
+              </Table.Cell>
+            </Table.Row>
+          ) : tenants.length === 0 ? (
+            <Table.Row>
+              <Table.Cell colSpan={7}>
+                <Text size="2" color="gray">
+                  No tenants yet. Use “Add Tenant” to create one.
+                </Text>
+              </Table.Cell>
+            </Table.Row>
+          ) : (
+            tenants.map((t) => (
+              <Table.Row key={t.id} align="center">
+                <Table.RowHeaderCell>
+                  <Text weight="medium">{t.id}</Text>
+                </Table.RowHeaderCell>
+                <Table.Cell>
+                  <Code variant="ghost">{t.host}</Code>
+                </Table.Cell>
+                <Table.Cell align="right">{t.port}</Table.Cell>
+                <Table.Cell>{t.db_name}</Table.Cell>
+                <Table.Cell>{t.user}</Table.Cell>
+                <Table.Cell align="right">
+                  <Badge color="gray" variant="soft">
+                    {t.pool_size}
+                  </Badge>
+                </Table.Cell>
+                <Table.Cell align="right">
+                  <Flex gap="2" justify="end">
+                    <Button
+                      size="1"
+                      variant="soft"
                       onClick={() => setModal({ mode: 'edit', tenant: t })}
-                      className="text-blue-600 hover:text-blue-800"
                     >
                       Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(t.id)}
-                      className="text-red-600 hover:text-red-800"
+                    </Button>
+                    <Button
+                      size="1"
+                      variant="soft"
+                      color="red"
+                      onClick={() => setPendingDelete(t)}
                     >
                       Delete
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+                    </Button>
+                  </Flex>
+                </Table.Cell>
+              </Table.Row>
+            ))
+          )}
+        </Table.Body>
+      </Table.Root>
 
-      {modal.mode !== 'closed' && (
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">
-              {modal.mode === 'add' ? 'Add Tenant' : `Edit ${modal.tenant.id}`}
-            </h3>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {modal.mode === 'add' && (
-                <Field label="Tenant ID" name="id" required />
+      <Dialog.Root
+        open={modal.mode !== 'closed'}
+        onOpenChange={(open) => {
+          if (!open) closeModal()
+        }}
+      >
+        <Dialog.Content maxWidth="460px">
+          <Dialog.Title>{editing ? `Edit ${editing.id}` : 'Add Tenant'}</Dialog.Title>
+          <Dialog.Description size="2" color="gray" mb="4">
+            {editing
+              ? 'Leave the password blank to keep the stored credential.'
+              : 'The password is hashed before it reaches userlist.txt and is never stored in plaintext.'}
+          </Dialog.Description>
+
+          <form onSubmit={handleSubmit}>
+            <Flex direction="column" gap="3">
+              {formError && (
+                <Callout.Root color="red" size="1" role="alert">
+                  <Callout.Icon>
+                    <ExclamationTriangleIcon />
+                  </Callout.Icon>
+                  <Callout.Text>{formError.message}</Callout.Text>
+                </Callout.Root>
+              )}
+
+              {!editing && (
+                <Field label="Tenant ID" name="id" required placeholder="tenant1" />
               )}
               <Field
                 label="Database Host"
                 name="host"
                 required
-                defaultValue={modal.mode === 'edit' ? modal.tenant.host : ''}
+                placeholder="db.example.com"
+                defaultValue={editing?.host ?? ''}
               />
               <Field
                 label="Port"
                 name="port"
                 type="number"
-                defaultValue={modal.mode === 'edit' ? String(modal.tenant.port) : '5432'}
+                defaultValue={editing ? String(editing.port) : '5432'}
               />
               <Field
                 label="Database Name"
                 name="db_name"
-                defaultValue={modal.mode === 'edit' ? modal.tenant.db_name : 'postgres'}
+                defaultValue={editing?.db_name ?? 'postgres'}
               />
               <Field
                 label="Database User"
                 name="user"
-                defaultValue={modal.mode === 'edit' ? modal.tenant.user : 'postgres'}
+                defaultValue={editing?.user ?? 'postgres'}
               />
               <Field
-                label={modal.mode === 'edit' ? 'New Password (leave blank to keep)' : 'Database Password'}
+                label={editing ? 'New Password' : 'Database Password'}
                 name="password"
                 type="password"
-                required={modal.mode === 'add'}
+                required={!editing}
+                placeholder={editing ? 'Unchanged' : ''}
               />
               <Field
                 label="Pool Size"
                 name="pool_size"
                 type="number"
-                defaultValue={modal.mode === 'edit' ? String(modal.tenant.pool_size) : '15'}
+                hint="Server connections this pool may open. Sizes add up per target."
+                defaultValue={editing ? String(editing.pool_size) : '15'}
               />
-              <div className="flex justify-end space-x-3">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={addTenant.isPending || updateTenant.isPending}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {modal.mode === 'add' ? 'Add Tenant' : 'Save Changes'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
+
+              <Flex gap="3" justify="end" mt="2">
+                <Dialog.Close>
+                  <Button type="button" variant="soft" color="gray">
+                    Cancel
+                  </Button>
+                </Dialog.Close>
+                <Button type="submit" loading={saving}>
+                  {editing ? 'Save Changes' : 'Add Tenant'}
+                </Button>
+              </Flex>
+            </Flex>
+          </form>
+        </Dialog.Content>
+      </Dialog.Root>
+
+      <AlertDialog.Root
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null)
+        }}
+      >
+        <AlertDialog.Content maxWidth="440px">
+          <AlertDialog.Title>Delete {pendingDelete?.id}?</AlertDialog.Title>
+          <AlertDialog.Description size="2">
+            This removes the <Code>databases.ini</Code> entry and drops its credential from{' '}
+            <Code>userlist.txt</Code>, unless another tenant still uses that user. Existing
+            clients routed through this pool will fail to reconnect.
+          </AlertDialog.Description>
+
+          <Flex gap="3" justify="end" mt="4">
+            <AlertDialog.Cancel>
+              <Button variant="soft" color="gray">
+                Cancel
+              </Button>
+            </AlertDialog.Cancel>
+            <Button color="red" loading={deleteTenant.isPending} onClick={confirmDelete}>
+              Delete tenant
+            </Button>
+          </Flex>
+        </AlertDialog.Content>
+      </AlertDialog.Root>
+    </Flex>
   )
 }
 
 interface FieldProps {
   label: string
   name: string
-  type?: string
+  type?: React.ComponentProps<typeof TextField.Root>['type']
   required?: boolean
   defaultValue?: string
+  placeholder?: string
+  hint?: string
 }
 
-function Field({ label, name, type = 'text', required, defaultValue }: FieldProps) {
+function Field({
+  label,
+  name,
+  type = 'text',
+  required,
+  defaultValue,
+  placeholder,
+  hint,
+}: FieldProps) {
   return (
-    <div>
-      <label className="block text-sm font-medium text-gray-700">{label}</label>
-      <input
-        type={type}
-        name={name}
-        required={required}
-        defaultValue={defaultValue}
-        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-      />
-    </div>
+    <Flex direction="column" gap="1" asChild>
+      <label>
+        <Text size="2" weight="medium">
+          {label}
+        </Text>
+        <TextField.Root
+          type={type}
+          name={name}
+          required={required}
+          defaultValue={defaultValue}
+          placeholder={placeholder}
+        />
+        {hint && (
+          <Text size="1" color="gray">
+            {hint}
+          </Text>
+        )}
+      </label>
+    </Flex>
   )
 }

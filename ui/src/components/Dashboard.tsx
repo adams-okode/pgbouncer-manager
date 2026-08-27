@@ -1,4 +1,12 @@
 import type { ReactNode } from 'react'
+import {
+  ActivityLogIcon,
+  ClockIcon,
+  ExclamationTriangleIcon,
+  LightningBoltIcon,
+  PersonIcon,
+} from '@radix-ui/react-icons'
+import { Box, Callout, Card, Flex, Grid, Heading, Skeleton, Text } from '@radix-ui/themes'
 
 import { useDashboard } from '../hooks/useDashboard'
 import { CapacityPanel } from './CapacityPanel'
@@ -7,72 +15,94 @@ export function Dashboard() {
   const { totalTenants, activeConnections, waiting, utilization, isLoading, error } =
     useDashboard()
 
-  const fmt = (n: number) => (isLoading ? '…' : String(n))
-
   return (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
+    <Flex direction="column" gap="6">
+      <Heading size="6">Dashboard</Heading>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
-          Failed to load dashboard data: {error.message}
-        </div>
+        <Callout.Root color="red" role="alert">
+          <Callout.Icon>
+            <ExclamationTriangleIcon />
+          </Callout.Icon>
+          <Callout.Text>Failed to load dashboard data: {error.message}</Callout.Text>
+        </Callout.Root>
       )}
 
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <Card label="Total Tenants" value={fmt(totalTenants)} icon={iconUsers} />
-        <Card label="Active Connections" value={fmt(activeConnections)} icon={iconBolt} />
-        <Card
-          label="Pool Utilization"
-          value={isLoading ? '…' : `${utilization}%`}
-          icon={iconChart}
+      <Grid columns={{ initial: '1', sm: '2', lg: '4' }} gap="4">
+        <Stat
+          label="Tenants"
+          value={String(totalTenants)}
+          hint="Entries in databases.ini"
+          icon={<PersonIcon />}
+          loading={isLoading}
         />
-        <Card label="Waiting Connections" value={fmt(waiting)} icon={iconClock} />
-      </div>
+        <Stat
+          label="Active Connections"
+          value={String(activeConnections)}
+          hint="Server connections running a query"
+          icon={<LightningBoltIcon />}
+          loading={isLoading}
+        />
+        <Stat
+          label="Busy Share"
+          value={`${utilization}%`}
+          // Deliberately not "Pool Utilization": this is active / (active + idle
+          // + waiting) across open connections, not usage against pool_size.
+          // The Connection Capacity panel below is what tracks real headroom.
+          hint="Of open connections, share not idle"
+          icon={<ActivityLogIcon />}
+          loading={isLoading}
+          // Intentionally uncoloured: the denominator is open connections, so a
+          // single busy connection reads 100% and would cry wolf. Real headroom
+          // is the Connection Capacity panel below.
+        />
+        <Stat
+          label="Waiting"
+          value={String(waiting)}
+          hint="Clients queued for a connection"
+          icon={<ClockIcon />}
+          loading={isLoading}
+          color={waiting > 0 ? 'amber' : undefined}
+        />
+      </Grid>
 
       <CapacityPanel />
-    </div>
+    </Flex>
   )
 }
 
-function Card({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
+interface StatProps {
+  label: string
+  value: string
+  hint: string
+  icon: ReactNode
+  loading: boolean
+  color?: 'red' | 'amber'
+}
+
+function Stat({ label, value, hint, icon, loading, color }: StatProps) {
   return (
-    <div className="bg-white overflow-hidden shadow rounded-lg">
-      <div className="p-5">
-        <div className="flex items-center">
-          <div className="flex-shrink-0">{icon}</div>
-          <div className="ml-5">
-            <p className="text-sm font-medium text-gray-500 truncate">{label}</p>
-            <p className="text-2xl font-semibold text-gray-900">{value}</p>
-          </div>
-        </div>
-      </div>
-    </div>
+    <Card size="2">
+      <Flex direction="column" gap="2">
+        <Flex align="center" gap="2" style={{ color: 'var(--gray-a10)' }}>
+          {icon}
+          <Text size="2" weight="medium" color="gray">
+            {label}
+          </Text>
+        </Flex>
+
+        <Skeleton loading={loading}>
+          <Heading size="7" color={color} highContrast={!color}>
+            {value}
+          </Heading>
+        </Skeleton>
+
+        <Box>
+          <Text size="1" color="gray">
+            {hint}
+          </Text>
+        </Box>
+      </Flex>
+    </Card>
   )
 }
-
-const iconClass = 'h-6 w-6 text-gray-400'
-
-const iconUsers = (
-  <svg className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-  </svg>
-)
-
-const iconBolt = (
-  <svg className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-  </svg>
-)
-
-const iconChart = (
-  <svg className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-  </svg>
-)
-
-const iconClock = (
-  <svg className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-  </svg>
-)
