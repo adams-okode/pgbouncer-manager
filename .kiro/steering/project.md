@@ -3,6 +3,7 @@
 ## Workflow
 
 This is a standalone project with a unified developer agent.
+See `CLAUDE.md` for contribution rules (commit conventions, release process).
 
 ## Tech Stack
 
@@ -10,7 +11,7 @@ This is a standalone project with a unified developer agent.
 |-----------|-------|
 | Backend | FastAPI, Python 3.11 |
 | CLI | Python CLI with argparse |
-| Frontend | React 18, Vite, Tailwind |
+| Frontend | React 18, Vite, Radix Themes |
 | Infrastructure | Docker, Docker Compose, Kubernetes |
 
 ## Development Environment
@@ -63,15 +64,18 @@ docker run -p 3000:3000 \
 
 ## API
 
-- `GET /` - Health check
-- `GET /tenants` - List tenants
-- `POST /tenants` - Add tenant
-- `GET /tenants/{id}` - Get tenant
-- `PATCH /tenants/{id}` - Update tenant
-- `DELETE /tenants/{id}` - Delete tenant
-- `GET /pools/status` - Pool stats
-- `GET /pools/stats` - Connection stats
-- `POST /pools/reload` - Reload PgBouncer
+All endpoints are namespaced under `/api`; the bundled SPA is served at `/`.
+
+- `GET /api/health` - Health check
+- `GET /api/tenants` - List tenants
+- `POST /api/tenants` - Add tenant
+- `GET /api/tenants/{id}` - Get tenant
+- `PATCH /api/tenants/{id}` - Update tenant
+- `DELETE /api/tenants/{id}` - Delete tenant
+- `GET /api/pools/status` - Pool stats
+- `GET /api/pools/stats` - Connection stats
+- `POST /api/pools/reload` - Reload PgBouncer
+- `GET /api/capacity` - Connection budget per target Postgres
 
 ## CLI
 
