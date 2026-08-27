@@ -52,6 +52,21 @@ them away:
 Requires repo secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`, and the
 repo setting *Allow GitHub Actions to create and approve pull requests*.
 
+`DOCKERHUB_TOKEN` must have **read/write/delete** scope. Pushing an image only
+needs read/write, but `dockerhub-description.yml` also uses this token to
+update the repository overview, and that endpoint rejects a read/write-only
+token — it authenticates successfully and then returns a bare `Forbidden`.
+
+## Docker Hub overview
+
+`.github/DOCKERHUB.md` is the repository overview shown on Docker Hub, synced
+by `dockerhub-description.yml` on push to `main`. It is intentionally *not*
+`README.md`: the README targets contributors, this targets someone deploying
+the image. It also lives outside `docs/` so MkDocs does not publish it as an
+orphan page competing with the real deployment docs in search.
+
+Keep the version numbers in its Tags table current when they drift.
+
 ## Checks to run before committing
 
 ```bash

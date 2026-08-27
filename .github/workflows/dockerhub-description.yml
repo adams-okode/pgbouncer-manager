@@ -31,8 +31,11 @@ jobs:
         uses: peter-evans/dockerhub-description@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
-          # Needs a password or a PAT with read/write/delete scope; a
-          # read/write-only token is rejected by this endpoint.
+          # DOCKERHUB_TOKEN must carry read/write/DELETE scope. Pushing an image
+          # only needs read/write, so a token scoped for the release pipeline
+          # alone authenticates fine here and then fails the PATCH with a bare
+          # "Forbidden". If this job starts 403ing after a token rotation, that
+          # is the reason.
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: adamsokode/pgbouncer-manager
           readme-filepath: ./.github/DOCKERHUB.md
