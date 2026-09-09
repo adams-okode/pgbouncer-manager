@@ -1,0 +1,19 @@
+apiVersion: v2
+name: pgbouncer-manager
+description: PgBouncer poolers as Kubernetes resources - an operator, a hardened PgBouncer deployment, and an optional read-only management UI.
+type: application
+# Both versions are owned by release-please (see release-please-config.json).
+# Do not edit them by hand; a manual bump conflicts with the release PR.
+version: 2.1.1
+appVersion: "2.1.1"
+home: https://adams-okode.github.io/pgbouncer-manager/
+sources:
+  - https://github.com/adams-okode/pgbouncer-manager
+keywords:
+  - pgbouncer
+  - postgresql
+  - connection-pooling
+  - operator
+maintainers:
+  - name: adams-okode
+    url: https://github.com/adams-okode

@@ -1,0 +1,163 @@
+{{- if .Values.manager.enabled }}
+{{- $poolerName := include "pgbouncer-manager.poolerName" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pgbouncer-manager.fullname" . }}-manager
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "pgbouncer-manager.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.manager.replicas }}
+  selector:
+    matchLabels: {{- include "pgbouncer-manager.managerSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "pgbouncer-manager.labels" . | nindent 8 }}
+        app.kubernetes.io/component: manager
+      {{- with .Values.manager.podAnnotations }}
+      annotations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        # Lets the unprivileged process read the 0440 config mount.
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      automountServiceAccountToken: false
+      containers:
+        - name: manager
+          image: {{ include "pgbouncer-manager.image" . }}
+          imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
+          env:
+            # The operator owns these files. Writes here would be reverted on
+            # its next reconcile, so the API refuses them outright rather than
+            # accepting an edit that will not survive.
+            - name: READ_ONLY
+              value: "true"
+            - name: CONFIG_DIR
+              value: /etc/pgbouncer
+            - name: SERVE_UI
+              value: {{ .Values.manager.serveUI | quote }}
+            - name: CORS_ORIGINS
+              value: {{ .Values.manager.corsOrigins | toJson | quote }}
+            - name: ADMIN_HOST
+              value: {{ $poolerName }}
+            - name: ADMIN_PORT
+              value: {{ .Values.pooler.listenPort | quote }}
+            - name: ADMIN_USER
+              value: {{ first .Values.pooler.adminUsers | quote }}
+            {{- with .Values.pooler.capacityLimits }}
+            - name: CAPACITY_LIMITS
+              value: {{ toJson . | quote }}
+            {{- end }}
+            {{- if .Values.pooler.adminPasswordSecret.name }}
+            # psql reads this; it is what makes SHOW POOLS / SHOW STATS work
+            # from outside the pooler pod under a real auth_type.
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.pooler.adminPasswordSecret.name }}
+                  key: {{ .Values.pooler.adminPasswordSecret.key }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 3000
+          volumeMounts:
+            - name: config
+              mountPath: /etc/pgbouncer
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          resources: {{- toYaml .Values.manager.resources | nindent 12 }}
+          readinessProbe:
+            # GET / is the SPA catch-all and answers even with a dead API.
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+      volumes:
+        - name: config
+          secret:
+            secretName: {{ $poolerName }}-pgbouncer-config
+            defaultMode: 0440
+            optional: true
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.manager.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.manager.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.manager.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pgbouncer-manager.fullname" . }}-manager
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "pgbouncer-manager.labels" . | nindent 4 }}
+  {{- with .Values.manager.service.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.manager.service.type }}
+  selector: {{- include "pgbouncer-manager.managerSelectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.manager.service.port }}
+      targetPort: http
+{{- if .Values.manager.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "pgbouncer-manager.fullname" . }}-manager
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "pgbouncer-manager.labels" . | nindent 4 }}
+  {{- with .Values.manager.ingress.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.manager.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.manager.ingress.tls }}
+  tls: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range .Values.manager.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          - path: {{ .path | default "/" }}
+            pathType: {{ .pathType | default "Prefix" }}
+            backend:
+              service:
+                name: {{ include "pgbouncer-manager.fullname" $ }}-manager
+                port:
+                  name: http
+    {{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,58 @@
+{{ .Chart.Name }} {{ .Chart.Version }} installed into namespace {{ .Release.Namespace }}.
+
+{{- if .Values.pooler.enabled }}
+
+Pooler:      {{ include "pgbouncer-manager.poolerName" . }}
+Connect to:  {{ include "pgbouncer-manager.poolerName" . }}.{{ .Release.Namespace }}.svc:{{ .Values.pooler.listenPort }}
+Databases:   {{ len .Values.databases }} declared in values
+
+Watch it settle:
+
+  kubectl -n {{ .Release.Namespace }} get pgbouncerpooler {{ include "pgbouncer-manager.poolerName" . }} -w
+  kubectl -n {{ .Release.Namespace }} get pgbouncerdatabases
+
+The pooler's status carries a per-target connection budget and any warnings:
+
+  kubectl -n {{ .Release.Namespace }} get pgbouncerpooler {{ include "pgbouncer-manager.poolerName" . }} \
+    -o jsonpath='{.status.targets}' | jq
+{{- end }}
+
+Add a database without restarting anything:
+
+  1. kubectl -n {{ .Release.Namespace }} create secret generic acme-db --from-literal=password=...
+  2. add it under `databases:` in your values, then `helm upgrade`
+
+{{- if eq .Values.pooler.reload.strategy "sighup" }}
+PgBouncer reloads in place, so existing client connections are not dropped.
+{{- else }}
+reload.strategy is "rollout": the pooler pods restart on every config change
+and existing client connections are dropped. Use "sighup" to avoid that.
+{{- end }}
+
+{{- if not .Values.pooler.tls.enabled }}
+
+WARNING: pooler.tls is disabled. Client connections to the pooler - including
+the SCRAM password exchange - cross the network unencrypted. Set
+pooler.tls.enabled and point pooler.tls.secretName at a TLS secret.
+{{- end }}
+
+{{- if and .Values.manager.enabled (not .Values.manager.ingress.enabled) }}
+
+The manager UI is running with READ_ONLY=true and no authentication of its own.
+Reach it with a port-forward, or put an authenticating proxy in front before
+exposing it:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "pgbouncer-manager.fullname" . }}-manager {{ .Values.manager.service.port }}:{{ .Values.manager.service.port }}
+{{- end }}
+{{- if and .Values.manager.enabled .Values.manager.ingress.enabled }}
+
+WARNING: the manager UI is exposed through an Ingress and ships no
+authentication of its own. Anyone who can reach that host can read your tenant
+list and live pool statistics. Make sure the Ingress enforces authentication.
+{{- end }}
+
+{{- if not .Values.networkPolicy.enabled }}
+
+Consider networkPolicy.enabled=true: the pooler holds credentials for every
+database behind it, so restricting who may open a socket to it is worthwhile.
+{{- end }}

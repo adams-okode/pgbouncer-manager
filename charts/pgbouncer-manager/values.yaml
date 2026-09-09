@@ -1,0 +1,248 @@
+# Default values for pgbouncer-manager.
+#
+# The fast path for a working, secured pooler is: set `pooler.image`, list your
+# databases under `databases`, point each at a Secret, and install. Everything
+# else has a working default.
+
+nameOverride: ""
+fullnameOverride: ""
+
+# API group of the CRDs. Change it only if you are running two independent
+# installations of this operator in one cluster.
+apiGroup: pgbouncer.adams-okode.github.io
+
+crds:
+  # CRDs are templated rather than placed in crds/ so that `helm upgrade`
+  # actually updates them; Helm never upgrades the crds/ directory. They carry
+  # helm.sh/resource-policy: keep, so uninstalling the chart leaves your
+  # PgBouncerDatabase resources intact.
+  install: true
+
+# ---------------------------------------------------------------------------
+# Operator
+# ---------------------------------------------------------------------------
+operator:
+  enabled: true
+
+  image:
+    repository: adamsokode/pgbouncer-manager
+    # Defaults to the chart's appVersion.
+    tag: ""
+    pullPolicy: IfNotPresent
+
+  # Empty watches every namespace (requires the ClusterRole below). Set a
+  # namespace to scope the operator, which also narrows its RBAC to a Role.
+  watchNamespace: ""
+
+  # How often to re-render without a triggering event. This is what picks up a
+  # password rotated inside a referenced Secret: the operator can read Secrets
+  # by name but cannot list or watch them, so it has to look.
+  resyncSeconds: 120
+
+  logLevel: INFO
+
+  # A single replica on purpose. The operator is the only writer of the config
+  # Secret, and two of them would race the way two managers on a shared volume
+  # do. Kubernetes restarts it on failure; a brief gap only delays reconciles.
+  replicas: 1
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+
+  rbac:
+    create: true
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+
+# ---------------------------------------------------------------------------
+# Pooler - the PgBouncerPooler resource this release creates
+# ---------------------------------------------------------------------------
+pooler:
+  enabled: true
+  name: ""
+
+  # PgBouncer image. Pin a tag you have vetted; the operator overrides the
+  # image's entrypoint and runs `pgbouncer /etc/pgbouncer/pgbouncer.ini`
+  # against the config it renders, so any image carrying the binary works.
+  image:
+    repository: edoburu/pgbouncer
+    tag: "v1.24.1"
+    pullPolicy: IfNotPresent
+
+  replicas: 2
+  listenPort: 6432
+
+  # How clients authenticate to the pooler. `trust` and `any` accept anyone;
+  # the operator reports them as a warning on the resource.
+  authType: scram-sha-256
+  # How passwords are hashed into userlist.txt.
+  authScheme: scram-sha-256
+
+  adminUsers:
+    - pgbouncer
+  # Secret holding a password for adminUsers. Required only if something
+  # outside the pooler pod queries the admin console - i.e. if manager.enabled
+  # is true. The reload sidecar signals the process and needs no credential.
+  adminPasswordSecret:
+    name: ""
+    key: password
+
+  # Extra [pgbouncer] options. Operator-managed options (auth_file, auth_type,
+  # listen_*, admin_users, client_tls_*, auth_query, ...) are rejected here.
+  settings:
+    pool_mode: transaction
+    max_client_conn: 1000
+    default_pool_size: 20
+    # Encrypt pooler-to-Postgres traffic. Lower it only if your Postgres has no
+    # TLS; the operator warns when this is not require/verify-ca/verify-full.
+    server_tls_sslmode: require
+
+  # Client-facing TLS. Without it the client-to-pooler leg, including the SCRAM
+  # exchange, crosses the network in the clear.
+  tls:
+    enabled: false
+    secretName: ""
+    mode: require
+
+  reload:
+    # sighup reloads PgBouncer in place and keeps established connections;
+    # rollout restarts the pods and drops them.
+    strategy: sighup
+    intervalSeconds: 10
+
+  # max_connections of each target Postgres, keyed "host:port". Pool sizes sum
+  # against these, and the pooler reports oversubscription on its status.
+  # Targets not listed here report "unknown" rather than a guess.
+  capacityLimits: {}
+  #  db-primary.internal:5432: 200
+
+  # Which PgBouncerDatabases this pooler serves. Empty claims every database in
+  # the namespace that has not named a different pooler.
+  databaseSelector: {}
+
+  service:
+    type: ClusterIP
+    annotations: {}
+
+  security:
+    runAsUser: 1100
+    runAsGroup: 1100
+    fsGroup: 1100
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  podAnnotations: {}
+  podLabels: {}
+
+# ---------------------------------------------------------------------------
+# Databases - the fast path for many tenants
+# ---------------------------------------------------------------------------
+# Every entry becomes a PgBouncerDatabase. `databaseDefaults` is merged into
+# each one, so a hundred tenants on one Postgres differ only by the fields that
+# actually differ. Adding one here is a `helm upgrade`; PgBouncer reloads in
+# place without disturbing the other tenants' connections.
+databaseDefaults: {}
+#  host: db-primary.internal
+#  port: 5432
+#  poolSize: 20
+#  poolMode: transaction
+
+databases: []
+#  - name: acme
+#    dbname: acme_production
+#    user: acme
+#    password:
+#      secretKeyRef:
+#        name: acme-db-credentials
+#        key: password
+#  - name: globex
+#    dbname: globex_production
+#    user: globex
+#    poolSize: 40
+#    password:
+#      secretKeyRef:
+#        name: globex-db-credentials
+
+# ---------------------------------------------------------------------------
+# Manager - the read-only web UI and API
+# ---------------------------------------------------------------------------
+# Off by default. Under the operator the custom resources are the source of
+# truth, so this runs with READ_ONLY=true: it shows tenants, live pool stats
+# and the connection budget, and refuses writes that the operator would revert
+# on its next reconcile.
+#
+# It ships no authentication of its own. Leave the Service ClusterIP and put an
+# authenticating proxy in front before exposing it.
+manager:
+  enabled: false
+
+  replicas: 1
+  service:
+    type: ClusterIP
+    port: 3000
+    annotations: {}
+
+  # Serve the SPA as well as the API. With no auth in front, this publishes the
+  # tenant list to anyone who can reach the port.
+  serveUI: true
+
+  # Restrict to your UI's origin once you have one.
+  corsOrigins:
+    - "*"
+
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts: []
+    tls: []
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+
+# ---------------------------------------------------------------------------
+# Network policy
+# ---------------------------------------------------------------------------
+# Default-deny ingress to the pooler, then allow only what you name here. Worth
+# enabling: a pooler holds credentials to every database behind it, so anything
+# that can open a socket to it is one weak client password from your data.
+networkPolicy:
+  enabled: false
+  # Namespaces and pods allowed to reach the pooler port.
+  allowFrom: []
+  #  - namespaceSelector:
+  #      matchLabels:
+  #        kubernetes.io/metadata.name: apps
+  #  - podSelector:
+  #      matchLabels:
+  #        role: api
