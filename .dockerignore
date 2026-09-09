@@ -16,3 +16,5 @@ ui/dist/
 .tmp/
 docs/
 mkdocs.yml
+charts/
+examples/

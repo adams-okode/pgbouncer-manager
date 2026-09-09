@@ -7,7 +7,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from app.deps import get_service
+from app.deps import get_service, require_writable
 from app.services.pgbouncer import PgBouncerService, validate_tenant_id
 
 router = APIRouter(prefix="/api/tenants", tags=["tenants"])
@@ -105,7 +105,12 @@ def get_tenant(
     return _to_response(tenant_id, databases[tenant_id])
 
 
-@router.post("", response_model=TenantResponse, status_code=201)
+@router.post(
+    "",
+    response_model=TenantResponse,
+    status_code=201,
+    dependencies=[Depends(require_writable)],
+)
 def add_tenant(
     tenant: TenantCreate, svc: PgBouncerService = Depends(get_service)
 ) -> TenantResponse:
@@ -132,7 +137,11 @@ def add_tenant(
     return _to_response(tenant.id, databases[tenant.id])
 
 
-@router.patch("/{tenant_id}", response_model=TenantResponse)
+@router.patch(
+    "/{tenant_id}",
+    response_model=TenantResponse,
+    dependencies=[Depends(require_writable)],
+)
 def update_tenant(
     tenant_id: str,
     update: TenantUpdate,
@@ -181,7 +190,7 @@ def update_tenant(
     return _to_response(tenant_id, parts)
 
 
-@router.delete("/{tenant_id}")
+@router.delete("/{tenant_id}", dependencies=[Depends(require_writable)])
 def delete_tenant(
     tenant_id: str, svc: PgBouncerService = Depends(get_service)
 ) -> dict[str, str]:

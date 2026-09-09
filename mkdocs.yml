@@ -11,8 +11,10 @@ nav:
   - API Reference: api.md
   - CLI: cli.md
   - Deployment:
+    - Overview: deployment/index.md
     - Docker: deployment/docker.md
     - Kubernetes: deployment/kubernetes.md
+    - Helm Chart: deployment/helm.md
     - Bare Metal: deployment/bare-metal.md
   - Security: security.md
   - Contributing: contributing.md

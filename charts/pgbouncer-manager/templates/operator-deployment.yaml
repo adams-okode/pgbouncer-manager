@@ -1,0 +1,70 @@
+{{- if .Values.operator.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pgbouncer-manager.fullname" . }}-operator
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "pgbouncer-manager.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.operator.replicas }}
+  # Recreate, not RollingUpdate: two operators briefly overlapping would both
+  # render the same config Secret.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {{- include "pgbouncer-manager.operatorSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "pgbouncer-manager.labels" . | nindent 8 }}
+        app.kubernetes.io/component: operator
+      {{- with .Values.operator.podAnnotations }}
+      annotations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "pgbouncer-manager.serviceAccountName" . }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: operator
+          image: {{ include "pgbouncer-manager.image" . }}
+          imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
+          command: ["python", "-m", "controller"]
+          env:
+            - name: PGBM_NAMESPACE
+              value: {{ .Values.operator.watchNamespace | quote }}
+            - name: PGBM_RESYNC_SECONDS
+              value: {{ .Values.operator.resyncSeconds | quote }}
+            - name: PGBM_LOG_LEVEL
+              value: {{ .Values.operator.logLevel | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          resources: {{- toYaml .Values.operator.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # The root filesystem is read-only; Python still wants somewhere to write.
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.operator.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.operator.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.operator.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

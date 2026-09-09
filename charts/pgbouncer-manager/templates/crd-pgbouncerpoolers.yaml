@@ -1,0 +1,250 @@
+{{- if .Values.crds.install }}
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: pgbouncerpoolers.{{ .Values.apiGroup }}
+  annotations:
+    helm.sh/resource-policy: keep
+  labels: {{- include "pgbouncer-manager.labels" . | nindent 4 }}
+spec:
+  group: {{ .Values.apiGroup }}
+  scope: Namespaced
+  names:
+    kind: PgBouncerPooler
+    listKind: PgBouncerPoolerList
+    plural: pgbouncerpoolers
+    singular: pgbouncerpooler
+    shortNames: [pgpooler]
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Replicas
+          type: integer
+          jsonPath: .spec.replicas
+        - name: Databases
+          type: integer
+          jsonPath: .status.databases
+        - name: Ready
+          type: string
+          jsonPath: .status.conditions[?(@.type=="Ready")].status
+        - name: Capacity
+          type: string
+          jsonPath: .status.conditions[?(@.type=="CapacitySafe")].reason
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: >-
+            A PgBouncer instance and the config it serves. The operator renders
+            the selected PgBouncerDatabases into a Secret and runs PgBouncer
+            against it.
+          properties:
+            spec:
+              type: object
+              required: [image]
+              properties:
+                image:
+                  type: object
+                  required: [repository]
+                  description: PgBouncer image. Its entrypoint is overridden.
+                  properties:
+                    repository: {type: string}
+                    tag: {type: string}
+                    pullPolicy:
+                      type: string
+                      enum: [Always, IfNotPresent, Never]
+                      default: IfNotPresent
+                managerImage:
+                  type: object
+                  description: >-
+                    Image for the reload sidecar - the pgbouncer-manager image,
+                    which already carries the reload logic. Required when
+                    reload.strategy is sighup.
+                  required: [repository]
+                  properties:
+                    repository: {type: string}
+                    tag: {type: string}
+                    pullPolicy:
+                      type: string
+                      enum: [Always, IfNotPresent, Never]
+                      default: IfNotPresent
+                replicas:
+                  type: integer
+                  minimum: 0
+                  default: 2
+                listenPort:
+                  type: integer
+                  minimum: 1
+                  maximum: 65535
+                  default: 6432
+                authType:
+                  type: string
+                  description: >-
+                    PgBouncer's client authentication method. `trust` and `any`
+                    disable authentication entirely and are reported as warnings.
+                  default: scram-sha-256
+                authScheme:
+                  type: string
+                  enum: [scram-sha-256, md5, plain]
+                  default: scram-sha-256
+                  description: >-
+                    Hash format written to userlist.txt. Changing it re-hashes
+                    every credential on the next reconcile.
+                adminUsers:
+                  type: array
+                  items: {type: string}
+                  default: [pgbouncer]
+                adminPassword:
+                  type: object
+                  description: >-
+                    Credential for adminUsers, added to userlist.txt. Needed only
+                    when something outside the pooler pod queries the admin
+                    console (SHOW POOLS / SHOW STATS) - the reload sidecar
+                    signals the process directly and needs no credential.
+                  required: [secretKeyRef]
+                  properties:
+                    secretKeyRef:
+                      type: object
+                      required: [name]
+                      properties:
+                        name: {type: string}
+                        key:
+                          type: string
+                          default: password
+                settings:
+                  type: object
+                  description: >-
+                    Additional [pgbouncer] options. Options the operator derives
+                    from dedicated fields (auth_file, auth_type, listen_*,
+                    admin_users, client_tls_*, auth_query, ...) are rejected -
+                    accepting them would let a namespace user turn off
+                    authentication for the whole pooler.
+                  additionalProperties:
+                    x-kubernetes-int-or-string: true
+                databaseSelector:
+                  type: object
+                  description: >-
+                    Label selector for the PgBouncerDatabases this pooler serves.
+                    Empty claims every database in the namespace that has not
+                    named a different pooler.
+                  additionalProperties: {type: string}
+                capacityLimits:
+                  type: object
+                  description: >-
+                    max_connections of each target Postgres, keyed "host:port".
+                    Pool sizes sum against these; targets not listed report a
+                    capacity status of "unknown" rather than a guess.
+                  additionalProperties: {type: integer}
+                manageDeployment:
+                  type: boolean
+                  default: true
+                  description: >-
+                    When false the operator renders only the config Secret and
+                    leaves running PgBouncer to you.
+                service:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      default: ClusterIP
+                    annotations:
+                      type: object
+                      additionalProperties: {type: string}
+                reload:
+                  type: object
+                  description: How a config change reaches the running PgBouncer.
+                  properties:
+                    strategy:
+                      type: string
+                      enum: [sighup, rollout]
+                      default: sighup
+                      description: >-
+                        sighup reloads in place and keeps client connections;
+                        rollout restarts the pods and drops them.
+                    intervalSeconds:
+                      type: integer
+                      minimum: 1
+                      maximum: 3600
+                      default: 10
+                tls:
+                  type: object
+                  description: >-
+                    Client-facing TLS. Without it, client-to-pooler traffic -
+                    including the SCRAM exchange - is unencrypted.
+                  required: [secretName]
+                  properties:
+                    secretName:
+                      type: string
+                      description: Secret holding tls.crt and tls.key.
+                    mode:
+                      type: string
+                      default: require
+                security:
+                  type: object
+                  properties:
+                    runAsUser: {type: integer, default: 1100}
+                    runAsGroup: {type: integer, default: 1100}
+                    fsGroup: {type: integer, default: 1100}
+                resources:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                nodeSelector:
+                  type: object
+                  additionalProperties: {type: string}
+                tolerations:
+                  type: array
+                  items:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                affinity:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                topologySpreadConstraints:
+                  type: array
+                  items:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                podAnnotations:
+                  type: object
+                  additionalProperties: {type: string}
+                podLabels:
+                  type: object
+                  additionalProperties: {type: string}
+            status:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
+              properties:
+                observedGeneration: {type: integer}
+                configSecret: {type: string}
+                configChecksum: {type: string}
+                databases: {type: integer}
+                skippedDatabases:
+                  type: array
+                  items: {type: string}
+                warnings:
+                  type: array
+                  items: {type: string}
+                targets:
+                  type: array
+                  description: Committed server connections per target Postgres.
+                  items:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type: {type: string}
+                      status: {type: string}
+                      reason: {type: string}
+                      message: {type: string}
+                      lastTransitionTime: {type: string}
+                      observedGeneration: {type: integer}
+{{- end }}

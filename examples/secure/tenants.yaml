@@ -1,0 +1,30 @@
+# Declarative tenants for `pgbouncer-manager apply`.
+#
+# This is the same schema the Kubernetes PgBouncerDatabase resource uses, so
+# moving this deployment to a cluster is a translation, not a redesign.
+#
+#   docker compose run --rm cli apply -f /work/tenants.yaml --dry-run
+#   docker compose run --rm cli apply -f /work/tenants.yaml
+#
+# `defaults` is merged into every entry below it, which is what keeps a file of
+# fifty tenants readable: they differ only where they actually differ.
+defaults:
+  host: postgres
+  port: 5432
+  poolSize: 20
+  poolMode: transaction
+
+databases:
+  - name: acme
+    dbname: acme_production
+    user: acme
+    password:
+      # Read from the environment at apply time, so no plaintext lands in git.
+      env: ACME_DB_PASSWORD
+
+  - name: globex
+    dbname: globex_production
+    user: globex
+    poolSize: 40
+    password:
+      env: GLOBEX_DB_PASSWORD

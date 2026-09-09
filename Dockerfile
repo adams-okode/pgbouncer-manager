@@ -17,11 +17,17 @@ RUN apt-get update && apt-get install -y \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# One image serves three roles -- the API/UI, the Kubernetes operator
+# (`python -m controller`), and the reload sidecar (`python -m
+# controller.reloader`) -- so it carries the operator dependencies too. They
+# share a version, which is what keeps the rendered config identical no matter
+# which of them wrote it.
+COPY requirements.txt requirements-operator.txt ./
+RUN pip install --no-cache-dir -r requirements-operator.txt
 
 COPY app/ ./app/
 COPY cli/ ./cli/
+COPY controller/ ./controller/
 
 # The compiled SPA is served at / by the backend. Set SERVE_UI=false to run
 # the API on its own.

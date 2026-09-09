@@ -22,11 +22,26 @@ hash; it is never written to disk.
 
 ## TLS for PgBouncer
 
-Configure your PgBouncer to require TLS to upstream databases:
+There are two legs, and they are configured separately.
+
+**Pooler to Postgres:**
 
 ```ini
-server_tls_sslmode = require
+server_tls_sslmode = require      ; encrypts, but does not authenticate the server
+server_tls_sslmode = verify-full  ; encrypts and verifies; needs server_tls_ca_file
 ```
+
+**Client to pooler** — often forgotten, and the one that carries the SCRAM
+exchange:
+
+```ini
+client_tls_sslmode = require
+client_tls_cert_file = /etc/pgbouncer/tls/tls.crt
+client_tls_key_file = /etc/pgbouncer/tls/tls.key
+```
+
+The Kubernetes operator renders the client-side block from `spec.tls` and warns
+on the pooler's status when either leg is unencrypted.
 
 ## API Security
 
@@ -51,6 +66,55 @@ add, edit, or delete tenants without a credential.
 
 The service logs a warning at startup whenever it mounts the UI, as a reminder
 that the surface is unauthenticated.
+
+## Read-only mode
+
+Set `READ_ONLY=true` and the API refuses every config-mutating call with a 409,
+while reads keep working. Use it wherever something else owns `databases.ini`
+and `userlist.txt`.
+
+The Kubernetes deployment sets it automatically. There the custom resources are
+the source of truth, so an edit made through the API would be reverted on the
+operator's next reconcile — failing loudly beats accepting a change that will
+not survive. The bundled UI reads the flag from `/api/health` and hides the
+controls rather than offering edits that will 409.
+
+## Kubernetes
+
+The [operator](deployment/kubernetes.md) changes where credentials live but not
+how they are stored: passwords come from Secrets, are hashed into
+SCRAM-SHA-256 verifiers by the same code, and only the hash reaches the
+rendered config.
+
+- **Passwords must come from a Secret.** The `PgBouncerDatabase` CRD accepts
+  only `password.secretKeyRef`, never an inline value. A password in a custom
+  resource is not covered by the encryption-at-rest defaults or the RBAC most
+  clusters put around secret reads.
+- **The operator cannot enumerate Secrets.** Its RBAC grants `get` but not
+  `list` or `watch`, so a leaked operator token can read only the Secrets
+  already named in a `PgBouncerDatabase`. The cost is that a rotated password
+  is picked up on the resync interval rather than instantly.
+- **Reserved config options are rejected.** `spec.settings` cannot set
+  `auth_file`, `auth_type`, `auth_query`, `admin_users`, `listen_*` or
+  `client_tls_*`. Allowing it would let whoever can edit a pooler downgrade
+  authentication to `trust` for every database behind it.
+- **Config values are validated, not interpolated.** A `databases.ini` value
+  containing whitespace, or a `pgbouncer.ini` value containing a newline, is
+  rejected rather than written — otherwise a hostname of
+  `db1\nauth_type = trust` injects a directive.
+- **Pods are unprivileged.** Non-root, read-only root filesystem, all
+  capabilities dropped, no privilege escalation, `seccompProfile:
+  RuntimeDefault`, and no service-account token on the pooler pod.
+- **The config Secret is mounted `0440`**, not world-readable. A SCRAM verifier
+  is not a plaintext password, but it is offline-crackable against a weak one.
+
+Two things are not on by default and should be:
+
+- `pooler.tls.enabled` — otherwise the client-to-pooler leg, including the
+  SCRAM exchange, crosses the network in the clear.
+- `networkPolicy.enabled` — a pooler holds credentials for every database
+  behind it, so anything that can open a socket to it is one weak client
+  password away from your data.
 
 ## File Permissions
 

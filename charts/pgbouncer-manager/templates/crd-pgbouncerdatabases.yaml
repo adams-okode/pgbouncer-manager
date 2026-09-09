@@ -1,0 +1,156 @@
+{{- if .Values.crds.install }}
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: pgbouncerdatabases.{{ .Values.apiGroup }}
+  annotations:
+    # Survive `helm uninstall`: deleting the CRD would cascade-delete every
+    # PgBouncerDatabase in the cluster, i.e. the user's entire tenant list.
+    helm.sh/resource-policy: keep
+  labels: {{- include "pgbouncer-manager.labels" . | nindent 4 }}
+spec:
+  group: {{ .Values.apiGroup }}
+  scope: Namespaced
+  names:
+    kind: PgBouncerDatabase
+    listKind: PgBouncerDatabaseList
+    plural: pgbouncerdatabases
+    singular: pgbouncerdatabase
+    shortNames: [pgdb]
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Host
+          type: string
+          jsonPath: .spec.host
+        - name: Database
+          type: string
+          jsonPath: .spec.dbname
+        - name: User
+          type: string
+          jsonPath: .spec.user
+        - name: Pool
+          type: integer
+          jsonPath: .spec.poolSize
+        - name: Pooler
+          type: string
+          jsonPath: .status.pooler
+        - name: Ready
+          type: boolean
+          jsonPath: .status.ready
+        - name: Message
+          type: string
+          priority: 1
+          jsonPath: .status.message
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: >-
+            One entry in a pooler's databases.ini: where a client connecting to
+            this name is routed, and how large a server-connection pool it gets.
+          properties:
+            spec:
+              type: object
+              required: [host]
+              properties:
+                name:
+                  type: string
+                  maxLength: 63
+                  pattern: '^[A-Za-z0-9_.-]+$'
+                  description: >-
+                    databases.ini entry name, i.e. the database name clients
+                    connect to. Defaults to the resource name.
+                poolerRef:
+                  type: object
+                  description: >-
+                    Pooler this database belongs to. When omitted, the pooler's
+                    databaseSelector decides.
+                  required: [name]
+                  properties:
+                    name:
+                      type: string
+                host:
+                  type: string
+                  description: Target Postgres host.
+                port:
+                  type: integer
+                  minimum: 1
+                  maximum: 65535
+                  default: 5432
+                dbname:
+                  type: string
+                  description: Database name on the target. Defaults to the entry name.
+                user:
+                  type: string
+                  description: >-
+                    Forced user. Omitting it makes the pool unbounded: PgBouncer
+                    opens one pool per connecting user, so poolSize stops being a
+                    ceiling. The operator reports this as a warning.
+                password:
+                  type: object
+                  description: >-
+                    Where the password for `user` comes from. Only secretKeyRef is
+                    accepted: an inline value would put a plaintext password in a
+                    custom resource, which - unlike a Secret - is not covered by
+                    encryption-at-rest defaults or by the RBAC most clusters put
+                    around secret reads.
+                  required: [secretKeyRef]
+                  properties:
+                    secretKeyRef:
+                      type: object
+                      required: [name]
+                      properties:
+                        name:
+                          type: string
+                        key:
+                          type: string
+                          default: password
+                poolSize:
+                  type: integer
+                  minimum: 0
+                  description: >-
+                    Server connections this entry may open. These sum across every
+                    entry pointing at the same Postgres.
+                poolMode:
+                  type: string
+                  enum: [session, transaction, statement]
+                reservePoolSize:
+                  type: integer
+                  minimum: 0
+                maxDbConnections:
+                  type: integer
+                  minimum: 0
+                maxDbClientConnections:
+                  type: integer
+                  minimum: 0
+                options:
+                  type: object
+                  description: Further databases.ini options, passed through verbatim.
+                  additionalProperties:
+                    type: string
+            status:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
+              properties:
+                pooler:
+                  type: string
+                ready:
+                  type: boolean
+                message:
+                  type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type: {type: string}
+                      status: {type: string}
+                      reason: {type: string}
+                      message: {type: string}
+                      lastTransitionTime: {type: string}
+                      observedGeneration: {type: integer}
+{{- end }}

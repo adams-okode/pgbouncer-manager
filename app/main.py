@@ -6,11 +6,11 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.routes import capacity, pools, tenants
 
 logger = logging.getLogger("pgbouncer_manager")
@@ -29,8 +29,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     _configure_logging()
     settings = get_settings()
     logger.info(
-        "starting pgbouncer-manager config_dir=%s auth_scheme=%s",
-        settings.config_dir, settings.auth_scheme,
+        "starting pgbouncer-manager config_dir=%s auth_scheme=%s read_only=%s",
+        settings.config_dir, settings.auth_scheme, settings.read_only,
     )
     yield
     logger.info("shutting down pgbouncer-manager")
@@ -52,9 +52,17 @@ app.include_router(capacity.router)
 
 
 @app.get("/api/health")
-def health() -> dict[str, str]:
-    """Health check endpoint."""
-    return {"service": "pgbouncer-manager", "status": "ok"}
+def health(settings: Settings = Depends(get_settings)) -> dict[str, object]:
+    """Health check endpoint.
+
+    Also advertises ``read_only`` so the UI can hide controls that this
+    instance would reject, rather than offering edits that 409.
+    """
+    return {
+        "service": "pgbouncer-manager",
+        "status": "ok",
+        "read_only": settings.read_only,
+    }
 
 
 def _mount_ui(application: FastAPI) -> None:

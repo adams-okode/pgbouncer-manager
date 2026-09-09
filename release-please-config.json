@@ -13,19 +13,60 @@
           "type": "json",
           "path": "ui/package.json",
           "jsonpath": "$.version"
+        },
+        {
+          "type": "yaml",
+          "path": "charts/pgbouncer-manager/Chart.yaml",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "yaml",
+          "path": "charts/pgbouncer-manager/Chart.yaml",
+          "jsonpath": "$.appVersion"
         }
       ]
     }
   },
   "changelog-sections": [
-    { "type": "feat", "section": "Features" },
-    { "type": "fix", "section": "Bug Fixes" },
-    { "type": "perf", "section": "Performance" },
-    { "type": "refactor", "section": "Refactoring" },
-    { "type": "docs", "section": "Documentation" },
-    { "type": "test", "section": "Tests", "hidden": true },
-    { "type": "build", "section": "Chores", "hidden": true },
-    { "type": "ci", "section": "Chores", "hidden": true },
-    { "type": "chore", "section": "Chores", "hidden": true }
+    {
+      "type": "feat",
+      "section": "Features"
+    },
+    {
+      "type": "fix",
+      "section": "Bug Fixes"
+    },
+    {
+      "type": "perf",
+      "section": "Performance"
+    },
+    {
+      "type": "refactor",
+      "section": "Refactoring"
+    },
+    {
+      "type": "docs",
+      "section": "Documentation"
+    },
+    {
+      "type": "test",
+      "section": "Tests",
+      "hidden": true
+    },
+    {
+      "type": "build",
+      "section": "Chores",
+      "hidden": true
+    },
+    {
+      "type": "ci",
+      "section": "Chores",
+      "hidden": true
+    },
+    {
+      "type": "chore",
+      "section": "Chores",
+      "hidden": true
+    }
   ]
 }

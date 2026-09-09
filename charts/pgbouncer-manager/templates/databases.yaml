@@ -1,0 +1,29 @@
+{{/*
+  One PgBouncerDatabase per entry in `databases`, with `databaseDefaults`
+  merged underneath. This is the fast path for many tenants: the entries differ
+  only where they actually differ, and adding one is a helm upgrade that the
+  pooler picks up with an in-place reload.
+*/}}
+{{- $defaults := .Values.databaseDefaults | default dict }}
+{{- $root := . }}
+{{- range .Values.databases }}
+{{- $db := merge (deepCopy .) (deepCopy $defaults) }}
+---
+apiVersion: {{ $root.Values.apiGroup }}/v1alpha1
+kind: PgBouncerDatabase
+metadata:
+  name: {{ required "each entry in .Values.databases needs a name" $db.name }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "pgbouncer-manager.labels" $root | nindent 4 }}
+    {{- with $root.Values.pooler.databaseSelector }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- if $root.Values.pooler.enabled }}
+  poolerRef:
+    name: {{ include "pgbouncer-manager.poolerName" $root }}
+  {{- end }}
+  {{- omit $db "name" | toYaml | nindent 2 }}
+  name: {{ $db.name }}
+{{- end }}

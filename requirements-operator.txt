@@ -1,0 +1,8 @@
+# Extra dependencies for the Kubernetes operator (python -m controller).
+# Kept apart from requirements.txt so a `pip install pgbouncer-manager` for the
+# API or CLI does not pull a Kubernetes client it will never use. The published
+# image installs both, because the operator, the reload sidecar and the manager
+# are one image on one version.
+-r requirements.txt
+kopf==1.37.2
+kubernetes==31.0.0

@@ -1,0 +1,72 @@
+{{- if .Values.pooler.enabled }}
+apiVersion: {{ .Values.apiGroup }}/v1alpha1
+kind: PgBouncerPooler
+metadata:
+  name: {{ include "pgbouncer-manager.poolerName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "pgbouncer-manager.labels" . | nindent 4 }}
+spec:
+  image:
+    repository: {{ .Values.pooler.image.repository }}
+    tag: {{ .Values.pooler.image.tag | quote }}
+    pullPolicy: {{ .Values.pooler.image.pullPolicy }}
+  managerImage:
+    repository: {{ .Values.operator.image.repository }}
+    tag: {{ default .Chart.AppVersion .Values.operator.image.tag | quote }}
+    pullPolicy: {{ .Values.operator.image.pullPolicy }}
+  replicas: {{ .Values.pooler.replicas }}
+  listenPort: {{ .Values.pooler.listenPort }}
+  authType: {{ .Values.pooler.authType | quote }}
+  authScheme: {{ .Values.pooler.authScheme | quote }}
+  adminUsers: {{- toYaml .Values.pooler.adminUsers | nindent 4 }}
+  {{- if .Values.pooler.adminPasswordSecret.name }}
+  adminPassword:
+    secretKeyRef:
+      name: {{ .Values.pooler.adminPasswordSecret.name }}
+      key: {{ .Values.pooler.adminPasswordSecret.key }}
+  {{- end }}
+  {{- with .Values.pooler.settings }}
+  settings: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.pooler.databaseSelector }}
+  databaseSelector: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.pooler.capacityLimits }}
+  capacityLimits: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- if .Values.pooler.tls.enabled }}
+  tls:
+    secretName: {{ required "pooler.tls.secretName is required when pooler.tls.enabled" .Values.pooler.tls.secretName }}
+    mode: {{ .Values.pooler.tls.mode | quote }}
+  {{- end }}
+  reload:
+    strategy: {{ .Values.pooler.reload.strategy }}
+    intervalSeconds: {{ .Values.pooler.reload.intervalSeconds }}
+  service:
+    type: {{ .Values.pooler.service.type }}
+    {{- with .Values.pooler.service.annotations }}
+    annotations: {{- toYaml . | nindent 6 }}
+    {{- end }}
+  security: {{- toYaml .Values.pooler.security | nindent 4 }}
+  {{- with .Values.pooler.resources }}
+  resources: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.pooler.nodeSelector }}
+  nodeSelector: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.pooler.tolerations }}
+  tolerations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.pooler.affinity }}
+  affinity: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.pooler.topologySpreadConstraints }}
+  topologySpreadConstraints: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.pooler.podAnnotations }}
+  podAnnotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.pooler.podLabels }}
+  podLabels: {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,78 @@
+{{- if .Values.operator.enabled }}
+{{- if .Values.operator.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "pgbouncer-manager.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "pgbouncer-manager.labels" . | nindent 4 }}
+  {{- with .Values.operator.serviceAccount.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- if .Values.operator.rbac.create }}
+---
+{{/*
+  Scoped to a Role when watching one namespace, a ClusterRole otherwise.
+  Note what is absent: no list or watch on Secrets. The operator reads password
+  Secrets by name only, so a compromised operator token cannot enumerate every
+  secret in the cluster - it can only read the ones already named in a
+  PgBouncerDatabase. The cost is that a rotated password is picked up on the
+  resync interval rather than instantly.
+*/}}
+{{- $namespaced := ne .Values.operator.watchNamespace "" }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: {{ if $namespaced }}Role{{ else }}ClusterRole{{ end }}
+metadata:
+  name: {{ include "pgbouncer-manager.fullname" . }}-operator
+  {{- if $namespaced }}
+  namespace: {{ .Values.operator.watchNamespace }}
+  {{- end }}
+  labels: {{- include "pgbouncer-manager.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [{{ .Values.apiGroup | quote }}]
+    resources: [pgbouncerpoolers, pgbouncerdatabases]
+    verbs: [get, list, watch, patch, update]
+  - apiGroups: [{{ .Values.apiGroup | quote }}]
+    resources: [pgbouncerpoolers/status, pgbouncerdatabases/status]
+    verbs: [get, patch, update]
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, create, patch, update]
+  - apiGroups: ["apps"]
+    resources: [deployments]
+    verbs: [get, list, watch, create, patch, update, delete]
+  - apiGroups: [""]
+    resources: [services]
+    verbs: [get, list, watch, create, patch, update, delete]
+  - apiGroups: ["policy"]
+    resources: [poddisruptionbudgets]
+    verbs: [get, list, watch, create, patch, update, delete]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
+{{- if not $namespaced }}
+  # kopf watches namespaces to discover where to look when running cluster-wide.
+  - apiGroups: [""]
+    resources: [namespaces]
+    verbs: [get, list, watch]
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: {{ if $namespaced }}RoleBinding{{ else }}ClusterRoleBinding{{ end }}
+metadata:
+  name: {{ include "pgbouncer-manager.fullname" . }}-operator
+  {{- if $namespaced }}
+  namespace: {{ .Values.operator.watchNamespace }}
+  {{- end }}
+  labels: {{- include "pgbouncer-manager.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: {{ if $namespaced }}Role{{ else }}ClusterRole{{ end }}
+  name: {{ include "pgbouncer-manager.fullname" . }}-operator
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "pgbouncer-manager.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- end }}

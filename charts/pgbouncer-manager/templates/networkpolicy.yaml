@@ -1,0 +1,33 @@
+{{- if .Values.networkPolicy.enabled }}
+{{/*
+  Default-deny ingress to the pooler pods, then allow only the peers named in
+  values. A pooler holds credentials to every database behind it, so anything
+  that can open a socket to it is one weak client password away from the data.
+  An empty allowFrom is a closed door, not an open one - that is deliberate.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pgbouncer-manager.poolerName" . }}-pooler
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "pgbouncer-manager.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: pgbouncer
+      app.kubernetes.io/instance: {{ include "pgbouncer-manager.poolerName" . }}
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: {{ .Values.pooler.listenPort }}
+      from:
+        {{- if .Values.manager.enabled }}
+        # The manager queries the admin console over the same port.
+        - podSelector:
+            matchLabels: {{- include "pgbouncer-manager.managerSelectorLabels" . | nindent 14 }}
+        {{- end }}
+        {{- with .Values.networkPolicy.allowFrom }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+{{- end }}

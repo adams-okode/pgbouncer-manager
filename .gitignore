@@ -59,3 +59,8 @@ app/static/
 # Cache
 .cache/
 .tmp/
+
+# Secure compose example: real secrets, never the .example files
+examples/secure/.env
+examples/secure/secrets/*
+!examples/secure/secrets/*.example
