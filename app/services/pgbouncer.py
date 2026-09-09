@@ -20,13 +20,31 @@ import re
 import stat
 import subprocess
 import tempfile
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from app import auth
 from app.config import Settings
+from app.services.render import (
+    render_databases_ini,
+    render_userlist,
+    serialize_db_config,
+)
 
 logger = logging.getLogger("pgbouncer_manager.service")
+
+# Re-exported: callers have imported these from this module since before the
+# rendering was split out into app.services.render.
+__all__ = [
+    "PgBouncerError",
+    "PgBouncerService",
+    "TargetCapacity",
+    "compute_capacity",
+    "parse_db_config",
+    "serialize_db_config",
+    "validate_tenant_id",
+]
 
 # Tenant ids land directly in an ini key, so constrain them tightly.
 _TENANT_ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,63}$")
@@ -140,9 +158,111 @@ def parse_db_config(config: str) -> dict[str, str]:
     return parts
 
 
-def serialize_db_config(parts: dict[str, str]) -> str:
-    """Serialize a parsed db config dict back into a single line."""
-    return " ".join(f"{key}={value}" for key, value in parts.items())
+def compute_capacity(
+    databases: Mapping[str, Mapping[str, str]],
+    *,
+    live: Mapping[str, Mapping[str, str]] | None = None,
+    assumed_pool_size: int = 20,
+    capacity_limits: Mapping[str, int] | None = None,
+    superuser_reserved_connections: int = 3,
+    tight_ratio: float = 0.8,
+) -> list[TargetCapacity]:
+    """Summarise committed server connections per target ``host:port``.
+
+    Pure: it takes parsed config in and gives verdicts out, touching no files
+    and no admin console. That is what lets the Kubernetes operator report the
+    same numbers on a PgBouncerPooler's status as the API reports at
+    ``/api/capacity``, from custom resources rather than from a databases.ini,
+    without either side re-deriving the arithmetic.
+
+    ``live`` is the admin console's view of effective settings, keyed by
+    database name. It refines the declared config where available and is
+    simply absent when PgBouncer is unreachable.
+    """
+    live = live or {}
+    limits = capacity_limits or {}
+
+    grouped: dict[tuple[str, int], _Bucket] = {}
+    for tenant_id, parts in sorted(databases.items()):
+        host = parts.get("host", "")
+        port = _as_int(parts.get("port")) or 5432
+        row = dict(live.get(tenant_id, {}))
+
+        pool_size = _field_int(row, "pool_size")
+        if pool_size is None:
+            pool_size = _as_int(parts.get("pool_size"))
+        if pool_size is None:
+            pool_size = assumed_pool_size
+        # Column name differs across PgBouncer versions.
+        reserve = _field_int(row, "reserve_pool", "reserve_pool_size")
+        if reserve is None:
+            reserve = _as_int(parts.get("reserve_pool")) or 0
+        current = _field_int(row, "current_connections")
+
+        bucket = grouped.setdefault((host, port), _Bucket())
+        bucket.tenants.append(tenant_id)
+        bucket.declared += pool_size
+        bucket.reserve += reserve
+        if current is not None:
+            bucket.current = current if bucket.current is None else bucket.current + current
+        if not parts.get("user"):
+            bucket.unbounded.append(tenant_id)
+
+    return [
+        _to_capacity(
+            host,
+            port,
+            bucket,
+            from_console=bool(live),
+            limit=limits.get(f"{host}:{port}"),
+            superuser_reserved_connections=superuser_reserved_connections,
+            tight_ratio=tight_ratio,
+        )
+        for (host, port), bucket in sorted(grouped.items())
+    ]
+
+
+def _to_capacity(
+    host: str,
+    port: int,
+    bucket: _Bucket,
+    *,
+    from_console: bool,
+    limit: int | None,
+    superuser_reserved_connections: int,
+    tight_ratio: float,
+) -> TargetCapacity:
+    worst_case = bucket.declared + bucket.reserve
+
+    headroom: int | None = None
+    utilization: float | None = None
+    status = "unknown"
+    if limit is not None:
+        usable = max(limit - superuser_reserved_connections, 0)
+        headroom = usable - worst_case
+        utilization = round(worst_case / usable, 4) if usable else None
+        if headroom < 0:
+            status = "oversubscribed"
+        elif utilization is not None and utilization >= tight_ratio:
+            status = "tight"
+        else:
+            status = "ok"
+
+    return TargetCapacity(
+        host=host,
+        port=port,
+        tenants=list(bucket.tenants),
+        declared_total=bucket.declared,
+        reserve_total=bucket.reserve,
+        worst_case_total=worst_case,
+        current_connections=bucket.current,
+        max_connections=limit,
+        headroom=headroom,
+        utilization=utilization,
+        status=status,
+        source="pgbouncer" if from_console else "databases.ini",
+        unbounded_pools=list(bucket.unbounded),
+    )
 
 
 class PgBouncerService:
@@ -170,10 +290,7 @@ class PgBouncerService:
         return result
 
     def write_databases(self, databases: dict[str, dict[str, str]]) -> None:
-        lines = ["[databases]"]
-        for tenant_id, parts in databases.items():
-            lines.append(f"{tenant_id} = {serialize_db_config(parts)}")
-        _atomic_write(self.settings.databases_path, "\n".join(lines) + "\n")
+        _atomic_write(self.settings.databases_path, render_databases_ini(databases))
 
     # --- userlist.txt -------------------------------------------------------
     def read_userlist(self) -> dict[str, str]:
@@ -192,10 +309,7 @@ class PgBouncerService:
         return users
 
     def write_userlist(self, users: dict[str, str]) -> None:
-        lines = ["; userlist.txt -- managed by pgbouncer-manager"]
-        for user, secret in users.items():
-            lines.append(f'"{user}" "{secret}"')
-        _atomic_write(self.settings.userlist_path, "\n".join(lines) + "\n")
+        _atomic_write(self.settings.userlist_path, render_userlist(users))
 
     # --- credentials --------------------------------------------------------
     def hash_credential(self, password: str, username: str) -> str:
@@ -275,73 +389,13 @@ class PgBouncerService:
     def capacity_by_target(self, *, effective: bool = True) -> list[TargetCapacity]:
         """Summarise committed server connections per target ``host:port``."""
         s = self.settings
-        databases = self.read_databases()
-        live = self._show_databases() if effective else {}
-
-        grouped: dict[tuple[str, int], _Bucket] = {}
-        for tenant_id, parts in sorted(databases.items()):
-            host = parts.get("host", "")
-            port = _as_int(parts.get("port")) or 5432
-            row = live.get(tenant_id, {})
-
-            pool_size = _field_int(row, "pool_size")
-            if pool_size is None:
-                pool_size = _as_int(parts.get("pool_size"))
-            if pool_size is None:
-                pool_size = s.assumed_pool_size
-            # Column name differs across PgBouncer versions.
-            reserve = _field_int(row, "reserve_pool", "reserve_pool_size") or 0
-            current = _field_int(row, "current_connections")
-
-            bucket = grouped.setdefault((host, port), _Bucket())
-            bucket.tenants.append(tenant_id)
-            bucket.declared += pool_size
-            bucket.reserve += reserve
-            if current is not None:
-                bucket.current = current if bucket.current is None else bucket.current + current
-            if not parts.get("user"):
-                bucket.unbounded.append(tenant_id)
-
-        return [
-            self._to_capacity(host, port, bucket, from_console=bool(live))
-            for (host, port), bucket in sorted(grouped.items())
-        ]
-
-    def _to_capacity(
-        self, host: str, port: int, bucket: _Bucket, *, from_console: bool
-    ) -> TargetCapacity:
-        s = self.settings
-        worst_case = bucket.declared + bucket.reserve
-        limit = s.capacity_limits.get(f"{host}:{port}")
-
-        headroom: int | None = None
-        utilization: float | None = None
-        status = "unknown"
-        if limit is not None:
-            usable = max(limit - s.superuser_reserved_connections, 0)
-            headroom = usable - worst_case
-            utilization = round(worst_case / usable, 4) if usable else None
-            if headroom < 0:
-                status = "oversubscribed"
-            elif utilization is not None and utilization >= s.capacity_tight_ratio:
-                status = "tight"
-            else:
-                status = "ok"
-
-        return TargetCapacity(
-            host=host,
-            port=port,
-            tenants=list(bucket.tenants),
-            declared_total=bucket.declared,
-            reserve_total=bucket.reserve,
-            worst_case_total=worst_case,
-            current_connections=bucket.current,
-            max_connections=limit,
-            headroom=headroom,
-            utilization=utilization,
-            status=status,
-            source="pgbouncer" if from_console else "databases.ini",
-            unbounded_pools=list(bucket.unbounded),
+        return compute_capacity(
+            self.read_databases(),
+            live=self._show_databases() if effective else {},
+            assumed_pool_size=s.assumed_pool_size,
+            capacity_limits=s.capacity_limits,
+            superuser_reserved_connections=s.superuser_reserved_connections,
+            tight_ratio=s.capacity_tight_ratio,
         )
 
     # --- reload -------------------------------------------------------------
