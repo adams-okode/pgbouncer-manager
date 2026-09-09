@@ -83,13 +83,15 @@ Keep the version numbers in its Tags table current when they drift.
 ## Checks to run before committing
 
 ```bash
-pytest                   # unit + API tests
-ruff check .             # lint
-mypy app cli             # type check
-cd ui && npm run build   # type-checks the SPA as well as building it
+pytest                            # unit + API tests
+ruff check .                      # lint
+mypy app cli controller           # type check
+helm lint charts/pgbouncer-manager
+cd ui && npm run build            # type-checks the SPA as well as building it
 ```
 
-CI runs exactly these. `ruff` and `mypy` are not advisory — a violation
+CI runs exactly these. `tests/test_chart.py` skips itself when `helm` is not
+installed, so a green `pytest` without helm does not mean the chart is fine. `ruff` and `mypy` are not advisory — a violation
 anywhere in the tree fails the build, including in files you did not touch.
 
 ## Domain gotchas
@@ -120,6 +122,41 @@ anywhere in the tree fails the build, including in files you did not touch.
   CSS by ~27%. If you use a new accent colour, add its token file there.
 - Prefer Radix components over hand-rolled ones — `AlertDialog` instead of
   `window.confirm`, `Dialog` for forms, `Tabs` for navigation.
+
+## Kubernetes operator and Helm chart
+
+The operator lives in `controller/`, **not** `operator/`. `operator` is a
+standard-library module name; a top-level package with that name shadows it for
+the whole process and breaks any dependency that imports it.
+
+- **One image, three roles.** The published image runs the API/UI, the operator
+  (`python -m controller`), and the reload sidecar (`python -m
+  controller.reloader`). That is why `requirements-operator.txt` is installed
+  into it even though `pip install pgbouncer-manager` does not pull those deps
+  (they are the `[operator]` extra). Do not split it into a second image without
+  also reworking `build.yml`, which publishes exactly one.
+- **`controller/reconcile.py` and `controller/objects.py` are pure.** They take
+  resolved inputs and return file content or plain dicts. Keep cluster I/O in
+  `handlers.py`/`kube.py` — the tests depend on the split.
+- **Never re-hash a credential that already matches.** SCRAM verifiers are
+  randomly salted, so re-hashing an unchanged password produces different bytes
+  every pass, and every pass then looks like a change and reloads PgBouncer.
+  `auth.verify_password` exists for this; `_matches_scheme` exists so that
+  changing `authScheme` still forces a genuine re-hash.
+- **The chart's `version` and `appVersion` are release-please's**, listed in
+  `release-please-config.json` `extra-files` alongside `ui/package.json`. Same
+  rule as the others: never hand-edit them.
+- **CRDs are templated, not in `crds/`.** Helm never upgrades the `crds/`
+  directory, so a schema change would silently not apply. They carry
+  `helm.sh/resource-policy: keep` so `helm uninstall` does not cascade-delete
+  every `PgBouncerDatabase` in the cluster.
+- **`tests/test_chart.py` is the only thing connecting the chart to the
+  operator.** It renders the chart and parses the result with the operator's own
+  models. A values key renamed on one side and not the other fails there and
+  nowhere else.
+- **`spec.settings` must keep rejecting reserved ini keys.** Accepting
+  `auth_type` or `auth_file` from a free-form map lets anyone who can edit a
+  pooler turn off authentication for every database behind it.
 
 ## Scope discipline
 

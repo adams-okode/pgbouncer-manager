@@ -91,6 +91,7 @@ touch:
 | `RELOAD_CONTAINERS` | `[]` | JSON list of Docker containers to `SIGHUP`; empty ⇒ reload via admin console |
 | `CORS_ORIGINS` | `["*"]` | Allowed browser origins for the API |
 | `SERVE_UI` | `true` | Serve the bundled web UI at `/`. Set `false` to run API-only |
+| `READ_ONLY` | `false` | Refuse config-mutating API calls with 409. Set where something else owns the files — the Kubernetes operator sets it automatically |
 | `CAPACITY_LIMITS` | `{}` | JSON map of `"host:port"` → `max_connections`, e.g. `{"db.example.com:5432": 200}` |
 
 ## API
@@ -124,6 +125,87 @@ python -m cli.tenant pools-list
 python -m cli.tenant reload
 ```
 
+## Declaring many databases at once
+
+Once you have more than a handful of tenants, stop making one API call each.
+Both deployment models take the *same* declarative file:
+
+```yaml
+# tenants.yaml -- `defaults` is merged into every entry below it
+defaults:
+  host: db-primary.internal
+  poolSize: 20
+  poolMode: transaction
+
+databases:
+  - name: acme
+    dbname: acme_production
+    user: acme
+    password: {env: ACME_DB_PASSWORD}
+  - name: globex
+    dbname: globex_production
+    user: globex
+    poolSize: 40
+    password: {env: GLOBEX_DB_PASSWORD}
+```
+
+```bash
+python -m cli.tenant apply -f tenants.yaml --dry-run   # show the plan
+python -m cli.tenant apply -f tenants.yaml             # create, patch, reload once
+```
+
+`apply` is idempotent: re-running it against an unchanged file does nothing, so
+it does not churn credentials or reload PgBouncer needlessly.
+
+On Kubernetes the same fields are the `PgBouncerDatabase` spec — see below.
+
+## Kubernetes
+
+On a cluster this runs as an **operator**. You declare custom resources; it
+renders them into PgBouncer config and keeps a hardened PgBouncer deployment
+serving it.
+
+```bash
+helm install pgbouncer charts/pgbouncer-manager -n data --create-namespace
+```
+
+```yaml
+apiVersion: pgbouncer.adams-okode.github.io/v1alpha1
+kind: PgBouncerDatabase
+metadata: {name: acme, namespace: data}
+spec:
+  host: db-primary.internal
+  dbname: acme_production
+  user: acme
+  poolSize: 20
+  password:
+    secretKeyRef: {name: acme-db, key: password}
+```
+
+```
+$ kubectl -n data get pgbouncerpoolers
+NAME       REPLICAS   DATABASES   READY   CAPACITY       AGE
+pgbouncer  2          12          True    WithinBudget   4m
+```
+
+The mental model shifts, and it is worth being explicit about why: pods are
+ephemeral and `ReadWriteMany` volumes are rare, so "the files are the state"
+cannot hold. **In a cluster the custom resources are the state**, and the
+operator renders them into a Secret that PgBouncer mounts. The domain logic is
+unchanged and literally shared — same hashing, same connect-string format, same
+capacity arithmetic.
+
+Two consequences:
+
+- The manager's write API runs with `READ_ONLY=true` there. An edit through the
+  UI would be reverted on the next reconcile, so it is refused with a 409
+  instead, and the UI hides the controls.
+- Config changes reload PgBouncer **in place** via `SIGHUP` from a sidecar, so
+  adding tenant 101 does not disconnect the other hundred.
+
+See [Kubernetes deployment](docs/deployment/kubernetes.md) and the
+[Helm chart reference](docs/deployment/helm.md).
+
 ## Deployment model
 
 Because the files are the source of truth, **the manager must be able to write
@@ -147,13 +229,22 @@ docker run -p 3000:3000 \
   pgbouncer-manager
 ```
 
+`examples/secure/` is a production-shaped Compose stack: SCRAM client auth, TLS
+to Postgres, unprivileged read-only containers, the manager port unpublished
+behind an authenticating proxy, and reloads over a shared unix socket so no
+admin password has to exist anywhere.
+
 ## Limitations & non-goals
 
 - **No authentication on the API**, and CORS defaults to `*`. Put it behind a
   reverse proxy with auth/TLS before exposing it beyond localhost, and restrict
   `CORS_ORIGINS`.
 - **Single-writer assumption.** The files are the state; concurrent writers (two
-  manager instances on a shared volume) can race. Run one writer.
+  manager instances on a shared volume) can race. Run one writer. The same
+  applies to the Kubernetes operator, which is why the chart pins it to a
+  single replica with a `Recreate` strategy.
+- **The operator does not create databases or roles in Postgres.** It configures
+  routing and pooling for databases and users that already exist.
 - **It manages tenants and pool sizing, not PgBouncer's global config.**
   Top-level settings (`pool_mode` defaults, `server_lifetime`, TLS, etc.) still
   live in `pgbouncer.ini`.

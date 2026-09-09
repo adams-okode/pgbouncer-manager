@@ -111,3 +111,65 @@ export PGBM_API_URL=https://pgbm.example.com
 python -m cli.tenant tenant-list
 ```
 
+
+## apply
+
+Reconcile a declarative file instead of issuing one call per tenant. This is
+the way to manage more than a handful of databases outside Kubernetes.
+
+```bash
+python -m cli.tenant apply -f tenants.yaml --dry-run
+python -m cli.tenant apply -f tenants.yaml
+```
+
+```yaml
+# tenants.yaml
+defaults:
+  host: db-primary.internal
+  port: 5432
+  poolSize: 20
+  poolMode: transaction
+
+databases:
+  - name: acme
+    dbname: acme_production
+    user: acme
+    password:
+      env: ACME_DB_PASSWORD     # or: file: /run/secrets/acme  |  value: ...
+  - name: globex
+    dbname: globex_production
+    user: globex
+    poolSize: 40
+    password:
+      env: GLOBEX_DB_PASSWORD
+```
+
+`defaults` is merged into every entry below it, which is what keeps a file of
+fifty tenants readable: they differ only where they actually differ.
+
+`apply` creates what is missing, patches what differs, and does nothing when
+the file already matches — so re-running it does not churn credentials or
+reload PgBouncer needlessly. It reloads once at the end unless you pass
+`--no-reload`.
+
+| Flag | Effect |
+|---|---|
+| `-f`, `--file` | Path to the tenants file (required). |
+| `--dry-run` | Print the plan; change nothing. |
+| `--prune` | Delete tenants the file no longer mentions. Destructive; off by default. |
+| `--rotate-credentials` | Also re-send passwords for tenants that already exist. |
+| `--no-reload` | Skip the PgBouncer reload afterwards. |
+
+### Why passwords are not re-sent by default
+
+The API stores a **salted** SCRAM verifier and cannot report whether it matches
+a given password. Re-sending one on every apply would re-hash it with a fresh
+salt, rewrite `userlist.txt`, and reload PgBouncer on every single run. So
+passwords go out on create, and on update only with `--rotate-credentials`.
+
+### Same schema as Kubernetes
+
+A `databases:` entry here and a `PgBouncerDatabase` spec have the same fields.
+Both `poolSize` and `pool_size` parse. Moving a deployment from Compose to a
+cluster is a translation, not a redesign — the only field that differs is where
+the password comes from (`env`/`file` locally, `secretKeyRef` in a cluster).

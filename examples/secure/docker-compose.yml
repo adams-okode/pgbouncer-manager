@@ -1,0 +1,179 @@
+# A production-shaped PgBouncer + manager stack for Docker Compose.
+#
+# The stack in ../docker-compose.yml is the minimal one that demonstrates the
+# management loop. This one is the same loop with the defaults you would
+# actually deploy:
+#
+#   * PgBouncer authenticates clients with SCRAM (auth_type = scram-sha-256),
+#     not trust, and requires TLS to the upstream Postgres.
+#   * The manager's port is never published. It is reachable only through an
+#     authenticating reverse proxy, because the API ships no authentication of
+#     its own and the bundled UI is a thin client over it.
+#   * Every container runs unprivileged, with a read-only root filesystem, all
+#     capabilities dropped and no-new-privileges.
+#   * The manager talks to the admin console over a shared unix socket rather
+#     than TCP, so no admin password has to exist for reloads to work.
+#   * Nothing is bind-mounted from the host into a writable path.
+#
+#   client ──▶ pgbouncer:6432 ──▶ postgres:5432
+#                  ▲ reads /etc/pgbouncer/{databases.ini,userlist.txt}
+#                  │ RELOAD over /var/run/pgbouncer/.s.PGSQL.6432
+#   you ──▶ proxy ─┴─▶ manager:3000  (writes those files)
+#
+# Quick start:
+#   cp .env.example .env && edit it
+#   docker compose up -d
+#   docker compose run --rm cli apply -f /work/tenants.yaml
+name: pgbouncer-secure
+
+x-hardening: &hardening
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+services:
+  # Prepares the shared volumes. Both PgBouncer and the manager run as uid
+  # 1100 so they can share a unix socket directory and so the manager's
+  # rewrites stay readable by PgBouncer.
+  init:
+    image: busybox:1.36
+    command: >
+      sh -c "cp /seed/pgbouncer.ini /etc/pgbouncer/pgbouncer.ini &&
+             cp -n /seed/databases.ini /etc/pgbouncer/databases.ini 2>/dev/null || true;
+             cp -n /seed/userlist.txt /etc/pgbouncer/userlist.txt 2>/dev/null || true;
+             chown -R 1100:1100 /etc/pgbouncer /var/run/pgbouncer &&
+             chmod 0750 /etc/pgbouncer /var/run/pgbouncer &&
+             chmod 0640 /etc/pgbouncer/* &&
+             ls -l /etc/pgbouncer"
+    volumes:
+      - ./pgbouncer:/seed:ro
+      - pgbconf:/etc/pgbouncer
+      - pgbsock:/var/run/pgbouncer
+
+  postgres:
+    image: postgres:16-alpine
+    <<: *hardening
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    secrets:
+      - postgres_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    tmpfs:
+      - /tmp
+      - /run
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  pgbouncer:
+    build: ../pgbouncer
+    <<: *hardening
+    user: "1100:1100"
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    volumes:
+      - pgbconf:/etc/pgbouncer:ro
+      - pgbsock:/var/run/pgbouncer
+    tmpfs:
+      - /tmp
+    # Publish this only if clients live outside the compose network. Prefer
+    # keeping it internal and attaching client services to this network.
+    ports:
+      - "127.0.0.1:6432:6432"
+
+  manager:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    <<: *hardening
+    user: "1100:1100"
+    depends_on:
+      pgbouncer:
+        condition: service_started
+    environment:
+      CONFIG_DIR: /etc/pgbouncer
+      AUTH_SCHEME: scram-sha-256
+      # A path, not a host: psql connects over the shared unix socket, where
+      # PgBouncer grants admin access on the peer's uid. No admin password has
+      # to exist anywhere for RELOAD to work.
+      ADMIN_HOST: /var/run/pgbouncer
+      ADMIN_PORT: "6432"
+      ADMIN_USER: pgbouncer
+      ADMIN_DB: pgbouncer
+      RELOAD_CONTAINERS: "[]"
+      # Restrict to the proxy's origin; the default "*" lets any page a browser
+      # loads call this API.
+      CORS_ORIGINS: '["${MANAGER_ORIGIN:-http://localhost:8080}"]'
+      # Known max_connections per target, so /api/capacity can tell you when
+      # your pool sizes have outgrown the server.
+      CAPACITY_LIMITS: '{"postgres:5432": 100}'
+    volumes:
+      # Read-write: the manager owns these two files.
+      - pgbconf:/etc/pgbouncer
+      - pgbsock:/var/run/pgbouncer
+    tmpfs:
+      - /tmp
+    # Deliberately no `ports:`. The API has no authentication; reaching it is
+    # equivalent to owning every tenant. Go through the proxy.
+    expose:
+      - "3000"
+    healthcheck:
+      # GET / is the SPA catch-all and answers even with a dead API.
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:3000/api/health').status==200 else 1)\""]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+  # Terminates TLS and enforces authentication in front of the manager.
+  proxy:
+    image: caddy:2-alpine
+    <<: *hardening
+    depends_on:
+      manager:
+        condition: service_healthy
+    environment:
+      MANAGER_USER: "${MANAGER_USER:?set MANAGER_USER in .env}"
+      # bcrypt hash, from: docker run --rm caddy:2-alpine caddy hash-password
+      MANAGER_PASSWORD_HASH: "${MANAGER_PASSWORD_HASH:?set MANAGER_PASSWORD_HASH in .env}"
+    volumes:
+      - ./proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    tmpfs:
+      - /tmp
+    ports:
+      - "${MANAGER_PORT:-8080}:8080"
+
+  # One-shot CLI for declarative tenant management:
+  #   docker compose run --rm cli apply -f /work/tenants.yaml
+  cli:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    profiles: ["cli"]
+    entrypoint: ["python", "-m", "cli.tenant", "--api-url", "http://manager:3000"]
+    command: ["tenant-list"]
+    env_file:
+      - .env
+    volumes:
+      - ./:/work:ro
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password
+
+volumes:
+  pgbconf:
+  pgbsock:
+  pgdata:
+  caddydata:
+  caddyconfig:
