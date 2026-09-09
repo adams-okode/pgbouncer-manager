@@ -1,8 +1,12 @@
 """CLI for tenant management -- a thin HTTP client of the FastAPI backend.
 
-Uses only the standard library (``urllib``) so the CLI ships with no extra
-runtime dependencies. The API base URL is configurable via ``--api-url`` or the
-``PGBM_API_URL`` environment variable (default: ``http://localhost:3000``).
+Transport is standard-library ``urllib``, so the imperative commands need no
+extra runtime dependencies. The API base URL is configurable via ``--api-url``
+or the ``PGBM_API_URL`` environment variable (default:
+``http://localhost:3000``).
+
+``apply`` is the declarative counterpart, and is the way to manage more than a
+handful of databases; see :mod:`cli.apply`.
 """
 
 from __future__ import annotations
@@ -13,6 +17,8 @@ import os
 import sys
 import urllib.error
 import urllib.request
+
+from cli import apply as apply_cmd
 
 DEFAULT_API_URL = "http://localhost:3000"
 
@@ -83,6 +89,8 @@ def build_parser() -> argparse.ArgumentParser:
     get = sub.add_parser("tenant-get", help="Get one tenant")
     get.add_argument("--id", required=True)
 
+    apply_cmd.add_parser(sub)
+
     sub.add_parser("tenant-list", help="List all tenants")
     sub.add_parser("pools-list", help="List pool statistics")
     sub.add_parser("stats-list", help="List connection statistics")
@@ -134,6 +142,23 @@ def run(args: argparse.Namespace) -> int:
     elif cmd == "stats-list":
         _print_json(_request(api, "GET", "/pools/stats"))
 
+    elif cmd == "apply":
+        tenants = apply_cmd.load_tenant_set(args.file)
+
+        def call(method: str, path: str, payload: dict | None = None) -> object:
+            return _request(api, method, path, payload)
+
+        code = apply_cmd.apply(
+            tenants,
+            call,
+            prune=args.prune,
+            dry_run=args.dry_run,
+            rotate_credentials=args.rotate_credentials,
+        )
+        if code == 0 and not args.dry_run and not args.no_reload:
+            _print_json(_request(api, "POST", "/pools/reload"))
+        return code
+
     elif cmd == "reload":
         _print_json(_request(api, "POST", "/pools/reload"))
 
@@ -150,7 +175,7 @@ def main() -> None:
         raise SystemExit(1)
     try:
         raise SystemExit(run(args))
-    except ApiError as exc:
+    except (ApiError, apply_cmd.ApplyError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
 
