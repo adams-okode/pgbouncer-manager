@@ -1,5 +1,13 @@
 // Types mirror the FastAPI backend response shapes.
 
+export interface Health {
+  service: string
+  status: string
+  // True when the backend refuses config writes because something else owns
+  // databases.ini and userlist.txt -- the Kubernetes operator, typically.
+  read_only: boolean
+}
+
 export interface Tenant {
   id: string
   host: string

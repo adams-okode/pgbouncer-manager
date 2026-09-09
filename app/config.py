@@ -49,6 +49,14 @@ class Settings(BaseSettings):
     auth_scheme: str = "scram-sha-256"
     scram_iterations: int = 4096
 
+    # --- Write protection ---------------------------------------------------
+    # Refuse every config-mutating API call. Set this wherever something else
+    # owns databases.ini/userlist.txt -- under the Kubernetes operator the
+    # custom resources are the source of truth, and a write made here would be
+    # silently reverted on the operator's next reconcile. Failing loudly beats
+    # accepting an edit that will not survive.
+    read_only: bool = False
+
     # --- API / CORS ---------------------------------------------------------
     cors_origins: list[str] = ["*"]
 

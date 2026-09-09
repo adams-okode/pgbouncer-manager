@@ -1,6 +1,7 @@
 import type {
   CapacityResponse,
   DeleteResponse,
+  Health,
   PoolsResponse,
   ReloadResponse,
   StatsResponse,
@@ -31,6 +32,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  getHealth: () => request<Health>('/health'),
   listTenants: () => request<Tenant[]>('/tenants'),
   getTenant: (id: string) => request<Tenant>(`/tenants/${id}`),
   addTenant: (data: TenantForm) =>

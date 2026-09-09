@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ExclamationTriangleIcon, PlusIcon } from '@radix-ui/react-icons'
+import { ExclamationTriangleIcon, InfoCircledIcon, PlusIcon } from '@radix-ui/react-icons'
 import {
   AlertDialog,
   Badge,
@@ -14,6 +14,7 @@ import {
   TextField,
 } from '@radix-ui/themes'
 
+import { useReadOnly } from '../hooks/useHealth'
 import {
   useAddTenant,
   useDeleteTenant,
@@ -32,6 +33,7 @@ export function TenantTable() {
   const addTenant = useAddTenant()
   const updateTenant = useUpdateTenant()
   const deleteTenant = useDeleteTenant()
+  const readOnly = useReadOnly()
   const [modal, setModal] = useState<ModalState>({ mode: 'closed' })
   const [pendingDelete, setPendingDelete] = useState<Tenant | null>(null)
 
@@ -80,10 +82,26 @@ export function TenantTable() {
             Each row is one <Code>databases.ini</Code> entry and its own PgBouncer pool.
           </Text>
         </Flex>
-        <Button onClick={() => setModal({ mode: 'add' })}>
-          <PlusIcon /> Add Tenant
-        </Button>
+        {!readOnly && (
+          <Button onClick={() => setModal({ mode: 'add' })}>
+            <PlusIcon /> Add Tenant
+          </Button>
+        )}
       </Flex>
+
+      {readOnly && (
+        <Callout.Root color="blue">
+          <Callout.Icon>
+            <InfoCircledIcon />
+          </Callout.Icon>
+          <Callout.Text>
+            Read-only: another controller owns <Code>databases.ini</Code> and{' '}
+            <Code>userlist.txt</Code>. Edit the <Code>PgBouncerDatabase</Code>{' '}
+            resources or your <Code>tenants.yaml</Code> instead — a change made
+            here would be reverted on the next reconcile.
+          </Callout.Text>
+        </Callout.Root>
+      )}
 
       {error && (
         <Callout.Root color="red" role="alert">
@@ -111,14 +129,16 @@ export function TenantTable() {
             <Table.ColumnHeaderCell>Database</Table.ColumnHeaderCell>
             <Table.ColumnHeaderCell>User</Table.ColumnHeaderCell>
             <Table.ColumnHeaderCell align="right">Pool Size</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell align="right">Actions</Table.ColumnHeaderCell>
+            {!readOnly && (
+              <Table.ColumnHeaderCell align="right">Actions</Table.ColumnHeaderCell>
+            )}
           </Table.Row>
         </Table.Header>
 
         <Table.Body>
           {isLoading ? (
             <Table.Row>
-              <Table.Cell colSpan={7}>
+              <Table.Cell colSpan={readOnly ? 6 : 7}>
                 <Text size="2" color="gray">
                   Loading…
                 </Text>
@@ -126,9 +146,11 @@ export function TenantTable() {
             </Table.Row>
           ) : tenants.length === 0 ? (
             <Table.Row>
-              <Table.Cell colSpan={7}>
+              <Table.Cell colSpan={readOnly ? 6 : 7}>
                 <Text size="2" color="gray">
-                  No tenants yet. Use “Add Tenant” to create one.
+                  {readOnly
+                    ? 'No tenants yet. Add a PgBouncerDatabase resource to create one.'
+                    : 'No tenants yet. Use “Add Tenant” to create one.'}
                 </Text>
               </Table.Cell>
             </Table.Row>
@@ -149,25 +171,27 @@ export function TenantTable() {
                     {t.pool_size}
                   </Badge>
                 </Table.Cell>
-                <Table.Cell align="right">
-                  <Flex gap="2" justify="end">
-                    <Button
-                      size="1"
-                      variant="soft"
-                      onClick={() => setModal({ mode: 'edit', tenant: t })}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      size="1"
-                      variant="soft"
-                      color="red"
-                      onClick={() => setPendingDelete(t)}
-                    >
-                      Delete
-                    </Button>
-                  </Flex>
-                </Table.Cell>
+                {!readOnly && (
+                  <Table.Cell align="right">
+                    <Flex gap="2" justify="end">
+                      <Button
+                        size="1"
+                        variant="soft"
+                        onClick={() => setModal({ mode: 'edit', tenant: t })}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        size="1"
+                        variant="soft"
+                        color="red"
+                        onClick={() => setPendingDelete(t)}
+                      >
+                        Delete
+                      </Button>
+                    </Flex>
+                  </Table.Cell>
+                )}
               </Table.Row>
             ))
           )}
